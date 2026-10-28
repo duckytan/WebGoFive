@@ -1,0 +1,11 @@
+/* 主题调色板（渲染器 THEMES 的 CSS 对应变量） */
+body[data-theme="wood"]  { --bg: #f0e2c4; --surface: #f7ecd8; --surface-2: #e8d8b8; --text: #3a2a15; --text-dim: #8a7a5a; --accent: #a86a2a; --accent-2: #37d0a0; }
+body[data-theme="dark"]  { --bg: #0f1420; --surface: #1a2130; --surface-2: #222b3d; --text: #e6ecf7; --text-dim: #8b98b0; --accent: #4d9fff; --accent-2: #37d0a0; }
+body[data-theme="light"] { --bg: #f4f1ea; --surface: #fffdf8; --surface-2: #efe8da; --text: #2a2620; --text-dim: #8a7a5a; --accent: #c78a2a; --accent-2: #2fa88a; }
+
+/* 默认木质（与渲染器 wood 主题一致） */
+body { transition: background .3s, color .3s; }
+body:not([data-theme]) {
+    --bg: #f0e2c4; --surface: #f7ecd8; --surface-2: #e8d8b8;
+    --text: #3a2a15; --text-dim: #8a7a5a; --accent: #a86a2a; --accent-2: #37d0a0;
+}

@@ -1,0 +1,25 @@
+{
+  "name": "webgofive-h5-v2",
+  "version": "2.2.0",
+  "description": "WebGoFive H5 五子棋 —— 自研 AI 引擎 + 模块化架构 + PWA（v2 重构版）",
+  "main": "index.html",
+  "scripts": {
+    "dev": "node tools/serve.js",
+    "test": "node tests/engine/engine.test.js && node tests/engine/forbidden.test.js && node tests/engine/vcf.test.js && node tests/engine/search.test.js && node tests/engine/loadorder.test.js && node tests/engine/tunable.test.js",
+    "bench": "node tests/benchmark.js",
+    "selfplay": "node tests/selfplay.js",
+    "showgame": "node tests/showgame.js",
+    "test:e2e": "node tests/e2e/run.js",
+    "accept": "node tests/accept.js",
+    "start": "node tools/serve.js"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "puppeteer-core": "^24.43.1"
+  },
+  "milestone": {
+    "name": "v2.2 棋力增强 + 开局推荐",
+    "status": "delivered",
+    "notes": "P2 两项落地：HELL 难度高级棋力选项（timeMs/depth/candidates 经包装 AI 透传 getBestMove）与开局定式推荐（前 4 手按 pointValue 中心性）；引擎与核心零改动。"
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "generatedAt": "2026-10-28T21:18:11.519Z",
+  "browser": "(local Edge)",
+  "pass": 93,
+  "fail": 0,
+  "total": 93,
+  "results": [
+    {
+      "suite": "01-load",
+      "pass": 11,
+      "fail": 0,
+      "failures": []
+    },
+    {
+      "suite": "02-rules",
+      "pass": 7,
+      "fail": 0,
+      "failures": []
+    },
+    {
+      "suite": "03-ai",
+      "pass": 12,
+      "fail": 0,
+      "failures": []
+    },
+    {
+      "suite": "04-modes",
+      "pass": 5,
+      "fail": 0,
+      "failures": []
+    },
+    {
+      "suite": "05-settings",
+      "pass": 9,
+      "fail": 0,
+      "failures": []
+    },
+    {
+      "suite": "06-persistence",
+      "pass": 9,
+      "fail": 0,
+      "failures": []
+    },
+    {
+      "suite": "07-mobile",
+      "pass": 3,
+      "fail": 0,
+      "failures": []
+    },
+    {
+      "suite": "08-pwa",
+      "pass": 12,
+      "fail": 0,
+      "failures": []
+    },
+    {
+      "suite": "09-ai-panel",
+      "pass": 11,
+      "fail": 0,
+      "failures": []
+    },
+    {
+      "suite": "10-strength-opening",
+      "pass": 14,
+      "fail": 0,
+      "failures": []
+    }
+  ]
+}

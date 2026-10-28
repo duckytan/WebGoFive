@@ -1,0 +1,11 @@
+/* 动画（加载旋转、弹窗淡入、提示条） */
+@keyframes gmk-spin { to { transform: rotate(360deg); } }
+@keyframes gmk-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+.modal.active .modal-content { animation: gmk-fade-in .2s ease; }
+.hint-bar.show { animation: gmk-fade-in .2s ease; }
+
+/* 减弱动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+    * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#1c2333">
+    <meta name="description" content="WebGoFive H5 五子棋 —— 自研 AI 引擎 · PWA · 人机/双人/AI对战">
+    <title>WebGoFive H5 · 五子棋</title>
+
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="assets/icon-192.png" type="image/png">
+    <link rel="apple-touch-icon" href="assets/icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/themes.css">
+    <link rel="stylesheet" href="css/animations.css">
+    <style>
+        /* AI 分析 / VCF 面板（AI 增强 T3；样式内联，不改动既有 css 文件） */
+        .ai-analysis-panel { margin-top: 4px; }
+        .advantage-bar { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+        .adv-tag { min-width: 52px; text-align: center; font-size: 12px; padding: 2px 6px; border-radius: 4px; background: #2a3a5a; color: #d8e2f4; }
+        .adv-tag.is-black { background: #1a1a1a; color: #ffd24d; }
+        .adv-tag.is-white { background: #e8e8e8; color: #222; }
+        .adv-track { flex: 1; height: 10px; border-radius: 5px; overflow: hidden; background: linear-gradient(90deg, #222 0%, #555 45%, #d8d8d8 55%, #fff 100%); }
+        .adv-fill { height: 100%; width: 50%; background: rgba(80, 160, 255, 0.85); transition: width .3s ease; }
+        .ai-line { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-size: 13px; }
+        .ai-key { color: #9aa8c0; min-width: 48px; }
+        .ai-val { color: #e8eefc; font-weight: 600; }
+        .ai-source { font-size: 11px; }
+        .pv-list { margin: 4px 0 4px 18px; padding-left: 0; font-size: 12px; color: #b9c4da; }
+        .pv-list li { margin: 2px 0; }
+        .vcf-row { display: flex; gap: 6px; margin: 4px 0; }
+        .vcf-select { flex: 1; padding: 4px 6px; border-radius: 4px; border: 1px solid #3a4a6a; background: #141a28; color: #d8e2f4; }
+        .switch-row.sm { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #b9c4da; }
+        .switch-row.sm input { margin: 0; }
+        .btn.sm { padding: 3px 10px; font-size: 12px; }
+        /* 高级棋力选项（P2-5；样式内联，沿用 AI 面板做法） */
+        .adv-field-row { display: flex; gap: 6px; }
+        .adv-field { display: flex; align-items: center; gap: 3px; font-size: 12px; color: #b9c4da; flex: 1; min-width: 0; }
+        .adv-field input { width: 50px; min-width: 0; padding: 3px 4px; border-radius: 4px; border: 1px solid #3a4a6a; background: #141a28; color: #d8e2f4; }
+        .adv-unit { color: #7284a3; }
+        @media (max-width: 480px) {
+            .ai-analysis-panel, .vcf-panel { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- 加载遮罩（就绪即隐藏，pointer-events:none 不挡点击） -->
+<div id="loading-screen" class="loading-screen" role="status" aria-live="polite">
+    <div class="loading-spinner"></div>
+    <p>正在载入棋盘…</p>
+</div>
+
+<header class="app-header">
+    <h1 class="app-title">WebGoFive <span class="app-sub">H5 五子棋</span><span id="app-version" class="app-version" title="当前版本">v2.2.0</span></h1>
+    <div class="header-actions">
+        <button id="replay-btn" class="btn ghost" type="button" title="回放本局">回放</button>
+        <button id="new-game-btn" class="btn primary" type="button">新游戏</button>
+        <button id="undo-btn" class="btn ghost" type="button">悔棋</button>
+    </div>
+</header>
+
+<main class="app-main">
+    <!-- 棋盘区 -->
+    <section class="board-section" aria-label="棋盘">
+        <div class="board-wrap">
+            <canvas id="board-canvas" width="600" height="600" aria-label="五子棋棋盘"></canvas>
+        </div>
+        <div class="board-meta">
+            <div class="meta-line"><span id="current-player" class="tag">黑方</span></div>
+            <div class="meta-line"><span id="move-count" class="tag">第 0 手</span></div>
+            <div class="meta-line"><span id="cursor-indicator" class="tag dim">—</span></div>
+        </div>
+    </section>
+
+    <!-- 侧栏控制 -->
+    <aside class="control-section" aria-label="游戏控制">
+        <fieldset class="ctrl-group">
+            <legend>模式</legend>
+            <div class="btn-row">
+                <button id="mode-PvP" class="btn" data-mode="PvP">双人</button>
+                <button id="mode-PvE" class="btn active" data-mode="PvE">人机</button>
+                <button id="mode-EvE" class="btn" data-mode="EvE">AI 对打</button>
+            </div>
+        </fieldset>
+
+        <fieldset class="ctrl-group">
+            <legend>AI 难度</legend>
+            <div class="btn-row">
+                <button id="diff-BEGINNER" class="btn" data-diff="BEGINNER">入门</button>
+                <button id="diff-NORMAL" class="btn active" data-diff="NORMAL">普通</button>
+                <button id="diff-HARD" class="btn" data-diff="HARD">困难</button>
+                <button id="diff-HELL" class="btn" data-diff="HELL">地狱</button>
+            </div>
+        </fieldset>
+
+        <!-- ===== 高级棋力选项（P2-5：仅 HELL 难度显示，透传 getBestMove）===== -->
+        <fieldset id="strength-advanced" class="ctrl-group" style="display:none">
+            <legend>高级强度（地狱）</legend>
+            <div class="adv-field-row">
+                <label class="adv-field">时间<input id="adv-time" type="number" min="100" max="10000" step="100"><span class="adv-unit">ms</span></label>
+                <label class="adv-field">深度<input id="adv-depth" type="number" min="1" max="24" step="1"><span class="adv-unit">层</span></label>
+                <label class="adv-field">候选<input id="adv-cand" type="number" min="4" max="64" step="1"><span class="adv-unit">个</span></label>
+            </div>
+            <div class="btn-row">
+                <button id="btn-strength-reset" class="btn sm" type="button">恢复默认</button>
+            </div>
+        </fieldset>
+
+        <fieldset class="ctrl-group">
+            <legend>主题</legend>
+            <div class="btn-row">
+                <button id="theme-wood" class="btn active" data-theme="wood">木质</button>
+                <button id="theme-dark" class="btn" data-theme="dark">深色</button>
+                <button id="theme-light" class="btn" data-theme="light">浅色</button>
+            </div>
+        </fieldset>
+
+        <fieldset class="ctrl-group">
+            <legend>显示</legend>
+            <label class="switch-row">
+                <span>棋盘坐标</span>
+                <input id="toggle-coords" type="checkbox" checked>
+            </label>
+        </fieldset>
+
+        <!-- ===== AI 分析面板（PvP/PvE 显示，EvE 隐藏）===== -->
+        <div id="ai-analysis-panel" class="ctrl-group ai-analysis-panel">
+            <legend>AI 分析</legend>
+
+            <!-- 形势优势条（P1）：黑领先 / 白领先 / 均势 -->
+            <div id="ai-advantage-bar" class="advantage-bar" title="形势评估条">
+                <span class="adv-tag" id="adv-label">均势</span>
+                <div class="adv-track">
+                    <div class="adv-fill" id="adv-fill" style="width:50%"></div>
+                </div>
+            </div>
+
+            <!-- 最优着法 + source 标签（P0） -->
+            <div class="ai-line">
+                <span class="ai-key">AI 推荐</span>
+                <span class="ai-val" id="ai-best-move">—</span>
+                <span class="ai-source tag dim" id="ai-source"></span>
+            </div>
+
+            <!-- 诊断：depth / nodes / timeMs（P0） -->
+            <div class="ai-line">
+                <span class="ai-key">诊断</span>
+                <span class="ai-val dim" id="ai-diagnostics">—</span>
+            </div>
+
+            <!-- 主要变例（前 3） -->
+            <ol id="ai-pv-list" class="pv-list" aria-label="主要变例"></ol>
+
+            <!-- 手动深度评估按钮 + 开关 -->
+            <div class="btn-row">
+                <button id="btn-deep-eval" class="btn sm" type="button">深度评估</button>
+            </div>
+            <div class="btn-row">
+                <label class="switch-row sm">
+                    <span>最优提示</span>
+                    <input id="chk-hint-toggle" type="checkbox" checked>
+                </label>
+                <label class="switch-row sm">
+                    <span>威胁提示</span>
+                    <input id="chk-threat-toggle" type="checkbox" checked>
+                </label>
+            </div>
+        </div>
+
+        <!-- ===== VCF 练习面板（P1）===== -->
+        <div id="vcf-panel" class="ctrl-group vcf-panel">
+            <legend>VCF 练习</legend>
+            <div class="vcf-row">
+                <select id="vcf-puzzle-select" class="vcf-select" aria-label="题目"></select>
+                <button id="btn-vcf-start" class="btn sm" type="button">开始</button>
+            </div>
+            <div class="ai-line">
+                <span class="ai-key">成绩</span>
+                <span class="ai-val dim" id="vcf-status">—</span>
+            </div>
+        </div>
+    </aside>
+</main>
+
+<!-- 提示条 -->
+<div id="hint-message" class="hint-bar" role="status" aria-live="polite"></div>
+<div id="ai-thinking" class="ai-thinking" style="display:none" role="status">AI 思考中…</div>
+
+<!-- 结算弹窗 -->
+<div id="game-result-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="result-title">
+    <div class="modal-content">
+        <h2 id="result-title">对局结束</h2>
+        <p id="result-detail"></p>
+        <div class="modal-actions">
+            <button id="close-result-btn" class="btn ghost" type="button">关闭</button>
+            <button id="rematch-btn" class="btn primary" type="button">再来一局</button>
+        </div>
+    </div>
+</div>
+
+<!-- 回放面板 -->
+<div id="replay-player" class="replay-player" style="display:none">
+    <div class="replay-controls">
+        <button id="rp-first" class="btn sm" type="button">⏮</button>
+        <button id="rp-back" class="btn sm" type="button">◀</button>
+        <button id="rp-play" class="btn sm primary" type="button">▶</button>
+        <button id="rp-fwd" class="btn sm" type="button">▶</button>
+        <button id="rp-last" class="btn sm" type="button">⏭</button>
+        <span id="rp-pos" class="rp-pos">0 / 0</span>
+    </div>
+</div>
+
+<footer class="app-footer">
+    <span>自研引擎 GMK · PVS + VCF + RIF 禁手</span>
+    <span class="dim">快捷键：N 新游戏 · U 悔棋 · Esc 关弹窗</span>
+</footer>
+
+<!-- ===== 脚本加载顺序（API-CONTRACT §1）===== -->
+<!-- 引擎 7 文件（constants → board → evaluator → search → kill → forbidden → gomoku-ai） -->
+<script src="js/engine/constants.js"></script>
+<script src="js/engine/board.js"></script>
+<script src="js/engine/evaluator.js"></script>
+<script src="js/engine/search.js"></script>
+<script src="js/engine/kill.js"></script>
+<script src="js/engine/forbidden.js"></script>
+<script src="js/engine/gomoku-ai.js"></script>
+<!-- 核心 / 渲染器 / 功能 / UI -->
+<script src="js/core/game.js"></script>
+<script src="js/renderer/board.js"></script>
+<script src="js/app/save-load.js"></script>
+<script src="js/app/replay.js"></script>
+<script src="js/app/vcf.js"></script>
+<script src="js/app/analysis.js"></script>
+<script src="js/app/tunable-ai.js"></script>
+<script src="js/ui/app.js"></script>
+
+<script>
+    (function () {
+        'use strict';
+        // 启动应用
+        window.demo = new GMK.App();
+        window.game = window.demo.game;       // 兼容既有测试引用
+        window.boardRenderer = window.demo.renderer;
+
+        // 自动存档恢复（仅在新对局且无进行中时）
+        if (GMK.SaveLoad.autoRestore(window.game)) {
+            window.demo._hint('已恢复上次对局');
+            window.demo._render();
+        }
+        window.demo.start();
+
+        // Service Worker（PWA 离线）
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').catch(() => {});
+        }
+
+        // 结算弹窗「再来一局」
+        document.getElementById('rematch-btn').addEventListener('click', () => {
+            window.demo.closeResultModal();
+            window.demo.newGame();
+        });
+    })();
+</script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+# WebGoFive-H5-v2
+
+# 依赖
+node_modules/
+npm-debug.log*
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 编辑器
+.idea/
+.vscode/
+*.swp
+
+# 日志与临时文件
+*.log
+*.tmp
+.temp/
+
+# E2E 交互审计截图（可随时用 npm run audit 重新生成）
+tests/e2e/_shot-*.png
+
+# 注意：assets/ 下的 PWA 图标（icon-*.png）是必需资源，不要忽略
+
+# 环境与密钥
+.env*
+*.key
+*.pem
