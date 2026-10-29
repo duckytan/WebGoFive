@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-10-29T03:29:59.296Z",
+  "generatedAt": "2026-10-29T15:37:38.622Z",
   "browser": "(local Edge)",
-  "pass": 179,
+  "pass": 198,
   "fail": 0,
-  "total": 179,
+  "total": 198,
   "results": [
     {
       "suite": "01-load",
@@ -74,6 +74,12 @@
     {
       "suite": "12-layout",
       "pass": 50,
+      "fail": 0,
+      "failures": []
+    },
+    {
+      "suite": "13-daily-wrongbook",
+      "pass": 19,
       "fail": 0,
       "failures": []
     }

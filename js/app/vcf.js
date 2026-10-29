@@ -327,6 +327,76 @@
         },
         clearProgress() { this._save({}); },
 
+        /* --- 每日一题 ---
+         * 按日期从题库做确定性选题（同一天永远同一题，跨天自动换），
+         * 通关累积连胜（断一天清零）。连胜状态与成绩共用一个存档键。 */
+        /** 本地时区 YYYY-MM-DD（不能用 toISOString——那是 UTC，晚上八点后日期会漂） */
+        dateKey(d) {
+            const y = d.getFullYear();
+            const m = d.getMonth() + 1;
+            const day = d.getDate();
+            return y + '-' + (m < 10 ? '0' + m : m) + '-' + (day < 10 ? '0' + day : day);
+        },
+        /** 日期键 → 题目索引：多项式滚动哈希，同日恒定、不同日尽量分散 */
+        dailyIndex(key) {
+            let h = 0;
+            for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+            return h % PUZZLES.length;
+        },
+        /** 今日每日一题状态：{ dateKey, index, puzzle, solved, streak } */
+        daily(key) {
+            key = key || this.dateKey(new Date());
+            const all = this._load();
+            const d = all.daily || {};
+            return {
+                dateKey: key,
+                index: this.dailyIndex(key),
+                puzzle: PUZZLES[this.dailyIndex(key)],
+                solved: d.lastKey === key,
+                streak: d.streak || 0
+            };
+        },
+        /** 通关「key 那天」的每日一题时调用：首解累积连胜，同日重复不叠加。
+         *  连续判定按「key 的前一天」算，而不是按真实今天 —— 语义自洽，也才可测。 */
+        recordDaily(key) {
+            key = key || this.dateKey(new Date());
+            const parts = key.split('-');
+            const prev = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+            prev.setDate(prev.getDate() - 1);
+            const yKey = this.dateKey(prev);
+            const all = this._load();
+            const d = all.daily || {};
+            if (d.lastKey === key) return d.streak || 1;
+            d.streak = (d.lastKey === yKey) ? (d.streak || 0) + 1 : 1;
+            d.lastKey = key;
+            all.daily = d;
+            this._save(all);
+            return d.streak;
+        },
+
+        /* --- 错题本 ---
+         * 记录玩家走错的题（不是冲四 / 走死 / 看答案），最新在前，上限 50 条。
+         * 条目只存 { puzzle, move, reason, at }，重练时按 puzzle 反查题库。 */
+        wrongbookAdd(puzzleId, move, reason) {
+            const all = this._load();
+            const list = Array.isArray(all.wrongbook) ? all.wrongbook : [];
+            list.unshift({ puzzle: puzzleId, move: move || null, reason: reason || '', at: Date.now() });
+            if (list.length > 50) list.length = 50;
+            all.wrongbook = list;
+            this._save(all);
+            return list.length;
+        },
+        wrongbookList() {
+            const all = this._load();
+            return Array.isArray(all.wrongbook) ? all.wrongbook.slice() : [];
+        },
+        wrongbookCount() { return this.wrongbookList().length; },
+        wrongbookClear() {
+            const all = this._load();
+            all.wrongbook = [];
+            this._save(all);
+        },
+
         /* --- 兼容旧接口（E2E/旧脚本仍引用） --- */
         current: null,
         start(idx) { this.current = PUZZLES[idx] || PUZZLES[0]; return this.current; },

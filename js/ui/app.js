@@ -488,16 +488,19 @@
                     if (n) sel.appendChild(group);
                 }
                 this._vcfUpdate();
+                this._vcfDailyRefresh();
             }
             const bindVcf = (id, fn) => {
                 const el = this._$(id);
                 if (el) el.addEventListener('click', () => { this._vcfStopDemo(); fn.call(this); });
             };
             bindVcf('btn-vcf-start', this._startVcf);
+            bindVcf('btn-vcf-daily', this._startVcfDaily);
             bindVcf('btn-vcf-hint', this._vcfHint);
             bindVcf('btn-vcf-undo', this._vcfUndo);
             bindVcf('btn-vcf-restart', this._vcfRestart);
             bindVcf('btn-vcf-solution', this._vcfSolution);
+            bindVcf('btn-vcf-wrongbook', this._toggleWrongbook);
 
             // 每步落子后：填 #ai-best-move + 威胁扫描 + 优势条（P0/P1）
             this.game.on('move', () => this._onMoveAfterHook());
@@ -657,27 +660,33 @@
             return true;
         }
 
-        /** 手动深度评估：遮罩上屏 → 同步搜索（默认 500ms 上限）→ 画前 3 条变例 */
+        /**
+         * 手动深度评估：优先派给 Worker（主线程不卡，遮罩即时消失不突兀），
+         * Worker 不可用/失败时 DeepEval 内部自动回退同步（会先让遮罩上屏一帧）。
+         * 见 js/app/deep-eval.js（PRD Q1：P2 Worker 化）。
+         */
         _runDeepEval() {
             const g = this.game;
             if (!GMK.Analysis || g.gameStatus === 'finished' || this._evaluating) return;
             this._evaluating = true;
             const mask = this._$('ai-thinking');
             if (mask) { mask.textContent = 'AI 计算中…'; this._show('ai-thinking', true); }
-            // 同步调用会卡主线程：先让遮罩上屏一帧再开搜（HELL 下 500ms 仍可能久，已限默认 500ms）
-            setTimeout(() => {
-                try {
-                    const res = GMK.Analysis.evaluate(g.getBoardState(), g.currentPlayer,
-                        { timeMs: 500, depth: 8, candidates: 10 });
-                    this._paintDeepEval(res);
-                } catch (e) {
-                    this._hint('深度评估失败：' + (e && e.message || e));
-                } finally {
-                    if (mask) mask.textContent = 'AI 思考中…';
-                    this._show('ai-thinking', false);
-                    this._evaluating = false;
-                }
-            }, 30);
+
+            const opts = { timeMs: 500, depth: 8, candidates: 10 };
+            const runner = GMK.DeepEval && GMK.DeepEval.run
+                ? GMK.DeepEval.run(g.getBoardState(), g.currentPlayer, opts)
+                : new Promise((resolve) => resolve(
+                    GMK.Analysis.evaluate(g.getBoardState(), g.currentPlayer, opts)));
+            runner.then((res) => {
+                this._lastDeepEval = res;   // 留给 E2E 断言 worker/sync 路径
+                this._paintDeepEval(res);
+            }).catch((e) => {
+                this._hint('深度评估失败：' + (e && e.message || e));
+            }).finally(() => {
+                if (mask) mask.textContent = 'AI 思考中…';
+                this._show('ai-thinking', false);
+                this._evaluating = false;
+            });
         }
 
         /** 把 evaluate 结果画进面板：最优着法 + 诊断 + 主要变例（前 3） */
@@ -715,15 +724,28 @@
 
         /** 选题 → 建会话 → 载入棋盘 → 切 VCF_PRACTICE 模式 */
         _startVcf() {
-            const V = GMK.VCFPractice;
-            if (!V || !V.create) return;
             const sel = this._$('vcf-puzzle-select');
             const idx = sel ? (parseInt(sel.value, 10) || 0) : 0;
+            this._startVcfAt(idx, false);
+        }
+
+        /** 每日一题入口：日期确定性选题，通关累积连胜 */
+        _startVcfDaily() {
+            const V = GMK.VCFPractice;
+            if (!V || !V.daily) return;
+            const d = V.daily();
+            this._startVcfAt(d.index, true);
+        }
+
+        _startVcfAt(idx, isDaily) {
+            const V = GMK.VCFPractice;
+            if (!V || !V.create) return;
             const p = V.PUZZLES[idx];
             if (!p) return;
 
             this.vcf = V.create(idx);
             this.vcf.startedAt = Date.now();
+            this.vcf.isDaily = !!isDaily;
             this.vcfPuzzle = p;
             this.vcfStartTs = Date.now();
 
@@ -731,7 +753,8 @@
             this._vcfSync();
             this._updatePanelVisibility();
             this._vcfUpdate();
-            this._hint('VCF 连冲：' + p.title + ' —— ' + p.lesson);
+            this._vcfDailyRefresh();
+            this._hint((isDaily ? '📅 每日一题：' : 'VCF 连冲：') + p.title + ' —— ' + p.lesson);
         }
 
         /** 把会话棋盘同步到真实 game 上（渲染 / 最后一手标记的唯一入口） */
@@ -791,7 +814,12 @@
                 } else if (s.state === 'solved') {
                     const ms = s.elapsed;
                     // 只在首次通关时写记录，避免每次刷新面板都累加 times
-                    if (!s._recorded) { s._recorded = true; GMK.VCFPractice.record(p.id, ms, s.steps); }
+                    if (!s._recorded) {
+                        s._recorded = true;
+                        GMK.VCFPractice.record(p.id, ms, s.steps);
+                        if (s.isDaily && GMK.VCFPractice.recordDaily) GMK.VCFPractice.recordDaily();
+                        this._vcfDailyRefresh();
+                    }
                     const rec = GMK.VCFPractice.getRecord(p.id) || { ms: ms };
                     msgEl.textContent = '已解 · ' + s.steps + ' 手 · 用时 ' + (ms / 1000).toFixed(1) + 's · 最佳 ' +
                         (rec.ms / 1000).toFixed(1) + 's';
@@ -813,6 +841,7 @@
             const r = s.play(x, y);
 
             if (r.code === 'NOT_FOUR') {
+                if (GMK.VCFPractice.wrongbookAdd) GMK.VCFPractice.wrongbookAdd(this.vcfPuzzle.id, { x: x, y: y }, 'not-four');
                 this._vcfUpdate('这一手不是冲四 —— 对方不必应，攻击链就断了。想想哪里能形成四。', 'bad');
                 this._hint('不是冲四：对方没有必须应的一手');
                 return;
@@ -823,6 +852,7 @@
 
             if (r.code === 'FOUR') {
                 if (r.dead) {
+                    if (GMK.VCFPractice.wrongbookAdd) GMK.VCFPractice.wrongbookAdd(this.vcfPuzzle.id, { x: x, y: y }, 'dead');
                     this._vcfUpdate('对方应手之后，你已无冲四可走 —— 这条线不成立。', 'bad');
                 } else {
                     const nm = GMK.VCFPractice.name(r.reply);
@@ -870,6 +900,11 @@
             const line = s.solution();
             if (!line.length) { this._vcfUpdate('这道题当前局面算不出连冲线。', 'bad'); return; }
 
+            // 看答案 = 本题放弃，记入错题本（无错手坐标）
+            if (this.vcfPuzzle && GMK.VCFPractice.wrongbookAdd) {
+                GMK.VCFPractice.wrongbookAdd(this.vcfPuzzle.id, null, 'gave-up');
+            }
+
             const idx = GMK.VCFPractice.indexOf(this.vcfPuzzle.id);
             const fresh = GMK.VCFPractice.create(idx);
             this.vcf = fresh;
@@ -886,6 +921,69 @@
                     (step.white ? ' → 对方挡 ' + GMK.VCFPractice.name(step.white) : ' → 成五'), '');
             }, 550);
             this._vcfTimer = timer;
+        }
+
+        /* ---------------- 每日一题 / 错题本 ---------------- */
+
+        /** 刷新「每日一题」行：今日是否已解 + 连胜天数 */
+        _vcfDailyRefresh() {
+            const V = GMK.VCFPractice;
+            const el = this._$('vcf-daily-info');
+            if (!el || !V || !V.daily) return;
+            const d = V.daily();
+            el.textContent = d.solved
+                ? '今日已解 · 连胜 ' + d.streak
+                : '连胜 ' + d.streak;
+        }
+
+        /** 展开 / 收起错题本（展开时才渲染，避免每次落子都重建 DOM） */
+        _toggleWrongbook() {
+            const box = this._$('vcf-wrongbook');
+            if (!box) return;
+            const show = box.style.display === 'none';
+            box.style.display = show ? 'block' : 'none';
+            if (show) this._renderWrongbook();
+        }
+
+        _renderWrongbook() {
+            const box = this._$('vcf-wrongbook');
+            const V = GMK.VCFPractice;
+            if (!box || !V || !V.wrongbookList) return;
+            const REASON = { 'not-four': '不是冲四', 'dead': '走死', 'gave-up': '看了答案' };
+            const list = V.wrongbookList();
+            box.textContent = '';
+            if (!list.length) {
+                const p = document.createElement('p');
+                p.className = 'vcf-wb-empty';
+                p.textContent = '还没有错题 —— 走错的题会自动记在这里。';
+                box.appendChild(p);
+                return;
+            }
+            list.slice(0, 12).forEach((it) => {
+                const idx = V.indexOf(it.puzzle);
+                const pz = idx >= 0 ? V.PUZZLES[idx] : null;
+                const row = document.createElement('div');
+                row.className = 'vcf-wb-item';
+                const span = document.createElement('span');
+                span.textContent = (pz ? pz.title : it.puzzle) +
+                    (it.move ? ' · 错于 ' + V.name(it.move) : '') +
+                    (REASON[it.reason] ? ' · ' + REASON[it.reason] : '');
+                const btn = document.createElement('button');
+                btn.className = 'btn sm';
+                btn.type = 'button';
+                btn.textContent = '重练';
+                btn.addEventListener('click', () => {
+                    this._vcfStopDemo();
+                    if (idx < 0) return;
+                    const sel = this._$('vcf-puzzle-select');
+                    if (sel) sel.value = String(idx);
+                    this._startVcfAt(idx, false);
+                    this._toggleWrongbook();   // 重练时收起列表，别挡住棋盘状态
+                });
+                row.appendChild(span);
+                row.appendChild(btn);
+                box.appendChild(row);
+            });
         }
 
         _vcfStopDemo() {

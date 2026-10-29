@@ -1,14 +1,31 @@
 # WebGoFive-H5-v2 交付进度
 
 > 独立新项目，不复用 WebGoFive-H5-Qoder 旧代码。引擎复用 v1.4.0（171 测试背书），UI/核心/渲染器全部重写。
-> 最后更新：2026-10-29 —— **v2.4.0（界面分页 + 手数列表 + 复盘 + 计时）开发完成，验收全绿，待用户确认发布**。
+> 最后更新：2026-10-29 —— **v2.5.0（深度评估 Worker 化 + 每日一题 + 错题本）开发完成，验收全绿，待用户确认发布**。
 
 ## 结论：✅ 开发完成，验收 PASS
 
-- 单元测试 **316/316**（8 套件：engine 39 + forbidden 45 + vcf 28 + vcf-practice 68 + search 36 + loadorder 22 + tunable 48 + replay 30）
-- E2E（真实 Edge）**179/179，12 套件**（新增 11-ux / 12-layout）
-- 资源完整性（含 sw.js PRECACHE 清单）+ 版本一致性（2.4.0 四处源）通过
+- 单元测试 **348/348**（9 套件：engine 39 + forbidden 45 + vcf 28 + vcf-practice 68 + search 36 + loadorder 22 + tunable 48 + replay 30 + daily-wrongbook 32）
+- E2E（真实 Edge）**198/198，13 套件**（v2.5.0 新增 13-daily-wrongbook 19 项）
+- 资源完整性（含 sw.js PRECACHE 清单）+ 版本一致性（2.5.0 四处源）通过
 - 总判定 **PASS**，`reports/acceptance.json`，变更明细见 `CHANGELOG.md`
+
+## v2.5.0（10-29）：深度评估 Worker 化 + 每日一题 + 错题本
+
+PRD Q1 的 P2 承诺（"P2 再做 Worker 化"）+ VCF-REDESIGN §7 两个扩展项落地：
+
+1. **深度评估 Worker 化**：`deep-eval-worker.js`（importScripts 引擎 + analysis.js，
+   评估逻辑零拷贝）+ `deep-eval.js`（`GMK.DeepEval.run()` Promise 接口，看门狗
+   timeMs+5s；无 Worker / file:// / 加载失败 / 超时四种情况静默回退同步）。
+   此前点深度评估整页冻结，配合 TunableAI 的 10s 上限最坏冻 10 秒。
+   E2E 在真实 Edge 断言 `via === 'worker'`。
+2. **每日一题**：日期哈希确定性选题 + 连胜（连续 +1 / 断档清零 / 同日不叠加）；
+   日期键用本地时区；连胜按「被记录 key 的前一天」倒推 —— 实现时抓到按真实
+   今天倒推会在补记历史日期时断链的 bug，已修并有单测锁死（含跨月边界）。
+3. **错题本**：不是冲四 / 走死 / 看答案三种错法自动记账（最新在前，上限 50），
+   面板展开列表，「重练」直达对应题并同步下拉框选中。
+4. `js/engine/*` 与 `js/core/game.js` 零改动（硬约束延续）；sw.js PRECACHE 补
+   2 个新文件；版本 2.4.0 → 2.5.0 四处源同步。
 
 ## v2.4.0（10-29）：界面与操作逻辑对标主流五子棋站点
 

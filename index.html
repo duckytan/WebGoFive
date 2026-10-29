@@ -50,6 +50,11 @@
         .vcf-msg.is-ok { color: #2fa88a; }
         .vcf-msg.is-bad { color: #e0533d; }
         .vcf-actions { flex-wrap: wrap; }
+        .vcf-daily-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+        .vcf-daily-info { font-size: 11px; color: var(--text-dim); }
+        .vcf-wrongbook { margin-top: 6px; border-top: 1px dashed rgba(128,128,128,.3); padding-top: 6px; }
+        .vcf-wb-empty { font-size: 12px; color: var(--text-dim); margin: 2px 0; }
+        .vcf-wb-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--text-dim); padding: 2px 0; }
         /* 棋谱 / 战绩 */
         .record-box { width: 100%; box-sizing: border-box; margin-top: 6px; padding: 6px 8px;
             border-radius: 6px; border: 1px solid rgba(128,128,128,.3); background: var(--surface-2);
@@ -79,7 +84,7 @@
 </div>
 
 <header class="app-header">
-    <h1 class="app-title">WebGoFive <span class="app-sub">H5 五子棋</span><span id="app-version" class="app-version" title="当前版本">v2.4.0</span></h1>
+    <h1 class="app-title">WebGoFive <span class="app-sub">H5 五子棋</span><span id="app-version" class="app-version" title="当前版本">v2.5.0</span></h1>
     <div class="header-actions">
         <button id="replay-btn" class="btn ghost" type="button" title="回放本局">回放</button>
         <button id="new-game-btn" class="btn primary" type="button">新游戏</button>
@@ -173,6 +178,12 @@
                     <button id="btn-vcf-start" class="btn sm primary" type="button">开始</button>
                 </div>
 
+                <div class="vcf-row vcf-daily-row">
+                    <button id="btn-vcf-daily" class="btn sm" type="button"
+                            title="按日期从题库确定性选题，通关累积连胜">📅 每日一题</button>
+                    <span id="vcf-daily-info" class="vcf-daily-info">连胜 0</span>
+                </div>
+
                 <div class="vcf-chips">
                     <span class="vcf-chip" id="vcf-level">未开始</span>
                     <span class="vcf-chip" id="vcf-depth">目标 — 手</span>
@@ -190,7 +201,12 @@
                     <button id="btn-vcf-undo" class="btn sm" type="button">悔一步</button>
                     <button id="btn-vcf-restart" class="btn sm" type="button">重来</button>
                     <button id="btn-vcf-solution" class="btn sm ghost" type="button">看答案</button>
+                    <button id="btn-vcf-wrongbook" class="btn sm ghost" type="button"
+                            title="走错的题都记在这里，点条目直接重练">错题本</button>
                 </div>
+
+                <!-- 错题本列表（点「错题本」展开；空态由 App 写入文案） -->
+                <div id="vcf-wrongbook" class="vcf-wrongbook" style="display:none"></div>
             </div>
         </div>
 
@@ -339,6 +355,7 @@
 <script src="js/app/replay.js"></script>
 <script src="js/app/vcf.js"></script>
 <script src="js/app/analysis.js"></script>
+<script src="js/app/deep-eval.js"></script>
 <script src="js/app/tunable-ai.js"></script>
 <script src="js/ui/app.js"></script>
 
