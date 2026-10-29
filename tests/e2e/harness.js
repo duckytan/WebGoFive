@@ -110,6 +110,8 @@ async function setPosition(page, stones, { mode = 'PvP', currentPlayer = 1 } = {
         const g = window.game;
         g.reset();
         g.setGameMode(m);
+        // 上一局的结算弹窗是 inset:0 的遮罩，不关掉会挡住后续点击
+        if (window.demo && window.demo.closeResultModal) window.demo.closeResultModal();
         g.board = g.board.map(r => r.slice());
         for (const [x, y, p] of st) { g.board[y][x] = p; g.moves.push({ x, y, player: p, step: g.moves.length + 1, timestamp: 0 }); }
         g.currentPlayer = cp;

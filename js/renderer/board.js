@@ -49,6 +49,8 @@
             this.forbiddenPoint = null;
             this.winLine = null;
             this.threat = null;       // {x,y} 威胁点（对手一步成五处，红色描边圈）
+            this.cursor = null;       // {x,y} 键盘光标
+            this.pending = null;      // {x,y,player} 待确认的落子预览
 
             // 事件订阅（由外部 .on 管理）
             this._listeners = { click: [], hover: [] };
@@ -120,6 +122,10 @@
         clearHint() { this.hint = null; this.render(this._lastBoard || [], this._lastOpts || {}); }
         setForbiddenPoint(pt) { this.forbiddenPoint = pt; this.render(this._lastBoard || [], this._lastOpts || {}); }
         setWinLine(line) { this.winLine = line; }
+        /** 键盘光标：方向键移动的落子框 */
+        setCursor(pt) { this.cursor = pt; this.render(this._lastBoard || [], this._lastOpts || {}); }
+        /** 落子确认：第一次点击的待确认点，画成半透明预览子 */
+        setPending(pt) { this.pending = pt; this.render(this._lastBoard || [], this._lastOpts || {}); }
 
         /** 主渲染入口 */
         render(board, opts = {}) {
@@ -150,6 +156,8 @@
             if (this.hint) this._drawHint(this.hint, t);
             if (this.threat) this._drawThreat(this.threat, t);
             if (this.forbiddenPoint) this._drawForbidden(this.forbiddenPoint, t);
+            if (this.pending) this._drawPending(this.pending, t);
+            if (this.cursor) this._drawCursor(this.cursor, t);
             if (this.hover && board[this.hover.y] && board[this.hover.y][this.hover.x] === 0) this._drawHover(this.hover, t);
 
             ctx.restore();
@@ -253,6 +261,34 @@
             // 中心小点提示
             ctx.fillStyle = 'rgba(255,59,59,0.35)';
             ctx.beginPath(); ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2); ctx.fill();
+        }
+
+        /** 键盘光标：四角括号，和「提示圈」「威胁圈」都不撞色 */
+        _drawCursor(pt, t) {
+            const ctx = this.ctx, c = this.cellSize * 0.46, x = this._px(pt.x), y = this._px(pt.y);
+            const arm = c * 0.5;
+            ctx.strokeStyle = '#4d9fff'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+            const corners = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
+            for (const [sx, sy] of corners) {
+                ctx.beginPath();
+                ctx.moveTo(x + sx * c, y + sy * c - sy * arm);
+                ctx.lineTo(x + sx * c, y + sy * c);
+                ctx.lineTo(x + sx * c - sx * arm, y + sy * c);
+                ctx.stroke();
+            }
+        }
+
+        /** 落子确认：半透明预览子（黑/白按当前行棋方） */
+        _drawPending(pt, t) {
+            const ctx = this.ctx, r = this.cellSize * 0.42;
+            const x = this._px(pt.x), y = this._px(pt.y);
+            ctx.globalAlpha = 0.45;
+            ctx.fillStyle = pt.player === 2 ? '#f2f2f2' : '#1b1b1b';
+            ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = '#4d9fff'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
+            ctx.beginPath(); ctx.arc(x, y, r + 3, 0, Math.PI * 2); ctx.stroke();
+            ctx.setLineDash([]);
         }
 
         _drawForbidden(pt, t) {

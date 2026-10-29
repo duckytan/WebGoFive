@@ -1,16 +1,19 @@
 # WebGoFive H5 · 五子棋（v2）
 
 内置自研 AI 引擎的 H5 五子棋：人机 / 双人 / AI 对打、AI 分析面板、实时威胁提示、
-开局定式推荐、VCF 冲四练习、棋局存档回放，PWA 可安装、可离线游玩。
+开局定式推荐、VCF 连冲练习、手数列表与复盘，PWA 可安装、可离线游玩。
 纯原生 ES6，零构建、零外部资源。
 
 > v2 是在 v1.4.0 引擎（171 项测试背书）之上的全新重构版：核心 / 渲染器 / UI 全部重写，
 > 按 `docs/API-CONTRACT.md` 三层解耦。重构思路与旧版对比见 `DELIVERY_PROGRESS.md`。
 
+![对局](reports/ui-game.png)
+
 ## 功能
 
 - **对局**：PvP 双人 / PvE 人机 / EvE AI 对打；难度 入门 / 普通 / 困难 / 地狱；
-  RIF 禁手规则（可选三三 / 四四 / 长连判定）；悔棋、新局、结算弹窗、再来一局。
+  RIF 禁手规则（可选三三 / 四四 / 长连判定）；悔棋（人机连 AI 应手一起撤）、
+  认输、新局、结算弹窗、再来一局。
 - **AI 分析面板**：形势优势条（黑 / 白 / 均势）、AI 推荐落点与来源语义
   （搜索所得 / 算杀截断 / 防亏手）、深度 / 节点 / 耗时诊断、主要变例（前 3）、
   手动深度评估（时间 / 深度 / 候选数可调）。
@@ -18,11 +21,18 @@
   开局定式推荐 —— 前 4 手内自动给出按引擎 pointValue 中心性挑选的开局点。
 - **高级棋力选项**：地狱难度下可自定义搜索时间（100–10000ms）/ 深度（1–24 层）/
   候选数（4–64 个），经包装 AI 透传 `getBestMove`，参数自动夹界并持久化。
-- **VCF 冲四练习**：5 道内置题（入门 2 / 进阶 2 / 中阶 1），选题 → 加载 →
-  校验 → 计时 → 历史最佳。
-- **回放与存档**：步进 / 快进 / 跳步回放；localStorage 自动存档，重开自动恢复。
-- **外观**：木质 / 深色 / 浅色三套主题；棋盘坐标开关；移动端 390px 响应式；
-  快捷键 `N` 新游戏 · `U` 悔棋 · `Esc` 关弹窗。
+- **VCF 连冲练习**：9 道引擎生成的题（入门 / 进阶 / 高阶）。按 VCF 定义判定 ——
+  每一手都必须是「四」，对手只有一个应点、只能跟着走；走错立刻解释原因。
+  提示 / 悔一步 / 重来 / 看答案（逐步演示参考线）。
+  设计推导见 [`docs/VCF-REDESIGN.md`](docs/VCF-REDESIGN.md)。
+- **手数列表 + 复盘**：逐手记录「序号 · 棋子 · 坐标」，点任意一手即可复盘到那一步；
+  `⏮ ◀ ▶ ▶| ⏭` 步进 / 自动播放，复盘期间棋盘归回放器、实时落子不介入。
+- **对局计时**：棋盘下方 `mm:ss` 实时计时，终局停在总用时。
+- **棋谱**：导出 / 导入坐标序列（`H8 I9 J10`），战绩统计。
+- **外观**：木质 / 深色 / 浅色三套主题；棋盘坐标开关；侧栏四页签
+  （对局 / 练习 / 分析 / 设置）；移动端 390px 响应式。
+- **键盘**：`←→↑↓` 移动光标 · `Enter`/`空格` 落子 · `H` 提示 · `U` 悔棋 ·
+  `N` 新局 · `R` 认输 · `Esc` 取消。
 - **PWA**：可安装到主屏；Service Worker 离线缓存（导航 network-first、
   静态 stale-while-revalidate、版本化缓存名，升级自动清旧缓存）。
 
@@ -39,8 +49,8 @@ npm start          # 本地预览 http://127.0.0.1:8080（零依赖静态服务�
 ## 测试与验收
 
 ```bash
-npm test           # 单元 218 项（engine / forbidden / vcf / search / loadorder / tunable）
-npm run test:e2e   # E2E 10 套件（真实 Edge，puppeteer-core 驱动）
+npm test           # 单元 316 项（engine / forbidden / vcf / vcf-practice / search / loadorder / tunable / replay）
+npm run test:e2e   # E2E 12 套件 179 项（真实 Edge，puppeteer-core 驱动）
 npm run accept     # 一键验收闸门：单元 + E2E + 资源完整性 + 版本一致性
 npm run bench      # 性能基准
 npm run selfplay   # 棋力自对弈（勿与 CPU 密集任务并行）
@@ -81,10 +91,27 @@ sw.js                   Service Worker（离线缓存）
 css/                    style / themes / animations（390px 响应式）
 js/                     engine 7 文件 · core · renderer · app · ui
 assets/                 icon-192 / 512 / maskable-512（纯 Node 生成）
-tests/                  engine 单测 · e2e（harness + 10 套件）· accept.js
+tests/                  engine 单测 · e2e（harness + 12 套件）· accept.js
 tools/                  serve.js 静态服务 · gen-icons.js 图标生成
-docs/                   API-CONTRACT.md · PRD-AI-ENHANCE.md · AI-ENHANCE-DESIGN.md
+                        gen-vcf.js 题库生成 · shot.js 界面截图
+docs/                   API-CONTRACT.md · PRD-AI-ENHANCE.md
+                        AI-ENHANCE-DESIGN.md · VCF-REDESIGN.md
+reports/                验收报告（acceptance.json / e2e.json）+ 界面截图
 ```
+
+## 截图
+
+| 对局 | 复盘 |
+|---|---|
+| ![对局](reports/ui-game.png) | ![复盘](reports/ui-review.png) |
+
+| 练习（VCF） | 分析 |
+|---|---|
+| ![练习](reports/ui-practice.png) | ![分析](reports/ui-analysis.png) |
+
+| 设置 | 移动端 |
+|---|---|
+| ![设置](reports/ui-settings.png) | ![移动端](reports/ui-mobile.png) |
 
 ## License
 

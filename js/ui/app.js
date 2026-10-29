@@ -49,6 +49,16 @@
             this.strengthOverride = null; // P2-5：HELL 高级参数（生效值，镜像 aiWrapper.override）
             this.vcfStartTs = 0;       // VCF 练习开始时间戳
             this.vcfPuzzle = null;     // 当前 VCF 题
+            this.vcf = null;           // 当前 VCF 会话（状态机）
+            this._vcfTimer = 0;        // 看答案的演示定时器
+            this.confirmMove = false;  // 落子需二次确认（防误触）
+            this.soundOn = true;       // 落子音效
+            this._pending = null;      // 待确认的落子
+            this.cursor = null;        // 键盘光标
+            this.tab = 'game';         // 侧栏当前分页：game / practice / analysis / settings
+            this.reviewing = false;    // 是否处于复盘（棋盘由 Replayer 驱动）
+            this.replayer = null;      // GMK.Replayer 实例
+            this._timerId = 0;         // 计时器句柄
 
             this._init();
         }
@@ -60,10 +70,14 @@
             this._bindRenderer();
             this._bindGameEvents();
             this._bindControls();
+            this._bindTabs();
+            this._bindReplay();
             this._bindAIEnhance();
+            this._bindUX();
             this._applySettingsFromStorage();
             this._hideLoading();
             this._updatePanelVisibility();
+            this._startTimer();
         }
 
         _hideLoading() {
@@ -96,7 +110,8 @@
             const bind = (id, fn) => { const el = this._$(id); if (el) el.addEventListener('click', fn); };
             bind('new-game-btn', () => this.newGame());
             bind('undo-btn', () => this.undo());
-            bind('replay-btn', () => this._show('replay-player', true));
+            bind('replay-btn', () => this._startReview());
+            bind('close-result-btn', () => this.closeResultModal());
 
             // 模式切换
             for (const m of ['PvP', 'PvE', 'EvE']) {
@@ -113,12 +128,311 @@
                 const el = this._$('theme-' + t);
                 if (el) el.addEventListener('click', () => this.setTheme(t));
             }
-            // 坐标开关
+            // 坐标开关：用 checkbox.checked 作为唯一真相，并持久化
+            // （旧实现用 classList.toggle('on') 推断状态，与 checked 反向，一开就错）
             const cc = this._$('toggle-coords');
-            if (cc) cc.addEventListener('click', () => {
-                const on = cc.classList.toggle('on');
-                this.renderer.setShowCoords(on);
+            if (cc) {
+                cc.checked = localStorage.getItem('gmk_coords') !== '0';
+                this.renderer.setShowCoords(cc.checked);
+                cc.addEventListener('change', () => {
+                    this.renderer.setShowCoords(cc.checked);
+                    localStorage.setItem('gmk_coords', cc.checked ? '1' : '0');
+                });
+            }
+        }
+
+        /* ---------------- 侧栏分页 ---------------- */
+
+        _bindTabs() {
+            for (const b of document.querySelectorAll('.ctrl-tab')) {
+                b.addEventListener('click', () => this.showTab(b.dataset.tab));
+            }
+        }
+
+        /** 切换侧栏分页；不传参数则按当前模式自动挑一个合适的页 */
+        showTab(name) {
+            if (!name) return;
+            this.tab = name;
+            for (const b of document.querySelectorAll('.ctrl-tab')) {
+                const on = b.dataset.tab === name;
+                b.classList.toggle('is-on', on);
+                b.setAttribute('aria-selected', on ? 'true' : 'false');
+            }
+            for (const p of document.querySelectorAll('.ctrl-pane')) {
+                p.classList.toggle('is-on', p.dataset.pane === name);
+            }
+        }
+
+        /* ---------------- 手数列表 + 复盘 ---------------- */
+
+        _bindReplay() {
+            const ol = this._$('move-list');
+            if (ol) {
+                ol.addEventListener('click', e => {
+                    const li = e.target.closest && e.target.closest('li.mv-item');
+                    if (!li) return;
+                    this._startReview(Number(li.dataset.i));
+                });
+            }
+            const bind = (id, fn) => { const el = this._$(id); if (el) el.addEventListener('click', fn); };
+            bind('rp-first', () => this.replayer && this.replayer.first());
+            bind('rp-back', () => this.replayer && this.replayer.back());
+            bind('rp-fwd', () => this.replayer && this.replayer.step());
+            bind('rp-last', () => this.replayer && this.replayer.last());
+            bind('rp-exit', () => this._exitReview());
+            bind('rp-play', () => {
+                const r = this.replayer, b = this._$('rp-play');
+                if (!r) return;
+                if (r.playing) { r.pause(); if (b) b.textContent = '▶'; }
+                else { r.play(); if (b) b.textContent = '⏸'; }
             });
+        }
+
+        /**
+         * 进入复盘：从当前 moves 重建 Replayer，并跳到第 idx 手。
+         * 复盘期间棋盘由 Replayer 逐帧驱动，_render() 不再覆盖。
+         */
+        _startReview(idx) {
+            const moves = this.game.getMoves();
+            if (!moves.length) { this._hint('还没有落子，无法复盘'); return; }
+            if (this.replayer) this.replayer.destroy();
+            this.replayer = new GMK.Replayer(moves, {
+                speed: 320,
+                onFrame: (b, i) => this._reviewFrame(b, i)
+            });
+            this.reviewing = true;
+            this._show('replay-player', true);
+            // 手数列表要跟着复盘位置高亮，先把「对局」页切出来
+            if (this.tab !== 'game') this.showTab('game');
+            const b = this._$('rp-play');
+            if (b) b.textContent = '▶';
+            this.replayer.goto(typeof idx === 'number' ? idx : moves.length - 1);
+        }
+
+        _reviewFrame(board, idx) {
+            const r = this.replayer;
+            if (!r) return;
+            const m = idx >= 0 ? r.moves[idx] : null;
+            this.renderer.render(board, {
+                lastMove: m ? { x: m.x, y: m.y, player: m.player } : null,
+                threat: null
+            });
+            const pos = this._$('rp-pos');
+            if (pos) pos.textContent = (idx + 1) + ' / ' + r.total;
+            if (!r.playing) { const b = this._$('rp-play'); if (b) b.textContent = '▶'; }
+            this._highlightMove(idx);
+        }
+
+        _exitReview() {
+            if (!this.reviewing) return;
+            this.reviewing = false;
+            if (this.replayer) this.replayer.pause();
+            this._show('replay-player', false);
+            this._render();
+        }
+
+        /** 重绘手数列表（仅当手数变化才重建 DOM，保住滚动位置） */
+        _paintMoveList() {
+            const ol = this._$('move-list');
+            if (!ol) return;
+            const moves = this.game.getMoves();
+            const cnt = this._$('mv-count');
+            if (cnt) cnt.textContent = moves.length + ' 手';
+
+            if (ol._n !== moves.length) {
+                if (!moves.length) {
+                    ol.innerHTML = '<li class="mv-empty">还没有落子</li>';
+                } else {
+                    let html = '';
+                    for (let i = 0; i < moves.length; i++) {
+                        const m = moves[i];
+                        html += '<li class="mv-item" data-i="' + i + '">' +
+                            '<span class="mv-no">' + (i + 1) + '</span>' +
+                            '<span class="mv-dot ' + (m.player === 1 ? 'b' : 'w') + '"></span>' +
+                            '<span class="mv-pt">' + cxy(m.x, m.y) + '</span></li>';
+                    }
+                    ol.innerHTML = html;
+                }
+                ol._n = moves.length;
+                ol.scrollTop = ol.scrollHeight;
+            }
+
+            const cur = this.reviewing && this.replayer
+                ? this.replayer.idx
+                : moves.length - 1;
+            this._highlightMove(cur);
+        }
+
+        _highlightMove(idx) {
+            const ol = this._$('move-list');
+            if (!ol) return;
+            for (const li of ol.querySelectorAll('li.mv-item')) {
+                li.classList.toggle('is-cur', Number(li.dataset.i) === idx);
+            }
+            const cur = ol.querySelector('li.is-cur');
+            if (cur) {
+                ol.scrollTop = Math.max(0, cur.offsetTop - ol.clientHeight / 2 + cur.offsetHeight / 2);
+            }
+        }
+
+        /* ---------------- 对局计时 ---------------- */
+
+        _startTimer() {
+            if (this._timerId) return;
+            this._timerId = setInterval(() => this._paintTimer(), 1000);
+        }
+
+        _paintTimer() {
+            const el = this._$('elapsed');
+            if (!el) return;
+            const d = this.game.getGameInfo().duration || 0;
+            const s = Math.floor(d / 1000);
+            el.textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' +
+                String(s % 60).padStart(2, '0');
+        }
+
+        /* ---------------- 操作逻辑（以人为本） ---------------- */
+
+        /** 认输 / 棋谱导入导出 / 落子确认 / 音效 / 战绩 */
+        _bindUX() {
+            const bind = (id, fn) => { const el = this._$(id); if (el) el.addEventListener('click', fn); };
+
+            // 先读偏好，再初始化控件，避免勾选状态与真实设置不一致
+            this.confirmMove = localStorage.getItem('gmk_confirm') === '1';
+            this.soundOn = localStorage.getItem('gmk_sound') !== '0';
+
+            bind('resign-btn', () => this.resign());
+            bind('btn-export', () => this.exportRecord());
+            bind('btn-import', () => this.importRecord());
+
+            const cf = this._$('toggle-confirm');
+            if (cf) {
+                cf.checked = !!this.confirmMove;
+                cf.addEventListener('change', () => {
+                    this.confirmMove = !!cf.checked;
+                    this._pending = null;
+                    this.renderer.setPending(null);
+                    localStorage.setItem('gmk_confirm', this.confirmMove ? '1' : '0');
+                    this._hint(this.confirmMove ? '落子需二次确认（防误触）' : '落子即时生效');
+                });
+            }
+
+            const sd = this._$('toggle-sound');
+            if (sd) {
+                sd.checked = !!this.soundOn;
+                sd.addEventListener('change', () => {
+                    this.soundOn = !!sd.checked;
+                    localStorage.setItem('gmk_sound', this.soundOn ? '1' : '0');
+                    if (this.soundOn) this._beep(660, 0.08);
+                });
+            }
+
+            this._paintStats();
+        }
+
+        /** 极简音效：WebAudio 合成，不引入任何音频资源 */
+        _beep(freq, dur) {
+            if (!this.soundOn) return;
+            try {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                if (!AC) return;
+                if (!this._ac) this._ac = new AC();
+                const ac = this._ac;
+                if (ac.state === 'suspended') ac.resume();
+                const o = ac.createOscillator(), g = ac.createGain();
+                o.type = 'sine';
+                o.frequency.value = freq;
+                o.connect(g); g.connect(ac.destination);
+                const t = ac.currentTime;
+                g.gain.setValueAtTime(0.0001, t);
+                g.gain.exponentialRampToValueAtTime(0.07, t + 0.01);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + (dur || 0.09));
+                o.start(t); o.stop(t + (dur || 0.09) + 0.02);
+            } catch (e) { /* 音频不可用不影响对局 */ }
+        }
+
+        /* --- 战绩 --- */
+        _loadStats() {
+            try { return JSON.parse(localStorage.getItem('gmk_stats') || '{}') || {}; } catch (e) { return {}; }
+        }
+        _paintStats() {
+            const el = this._$('stat-line');
+            if (!el) return;
+            const st = this._loadStats();
+            if (!st.total) { el.textContent = '战绩：—'; return; }
+            const rate = Math.round((st.win || 0) / st.total * 100);
+            el.textContent = '战绩：' + (st.win || 0) + ' 胜 ' + (st.lose || 0) + ' 负 ' +
+                (st.draw || 0) + ' 和 · 胜率 ' + rate + '%' +
+                (st.streak ? ' · 连胜 ' + st.streak : '');
+        }
+        /** 只统计人机对战（玩家执黑），PvP / EvE 不计入 */
+        _recordResult(winner) {
+            if (this.game.gameMode !== 'PvE') return;
+            const st = this._loadStats();
+            st.total = (st.total || 0) + 1;
+            if (winner === 0) { st.draw = (st.draw || 0) + 1; st.streak = 0; }
+            else if (winner === 1) {
+                st.win = (st.win || 0) + 1;
+                st.streak = (st.streak || 0) + 1;
+                st.best = Math.max(st.best || 0, st.streak);
+            } else { st.lose = (st.lose || 0) + 1; st.streak = 0; }
+            try { localStorage.setItem('gmk_stats', JSON.stringify(st)); } catch (e) {}
+            this._paintStats();
+        }
+
+        /* --- 认输 --- */
+        resign() {
+            const g = this.game;
+            if (g.gameStatus === 'finished') { this._hint('对局已经结束了'); return; }
+            if (g.gameMode === 'EvE') { this._hint('机机对战没有认输'); return; }
+            const loser = g.gameMode === 'PvE' ? 1 : g.currentPlayer;
+            const winner = loser === 1 ? 2 : 1;
+            g.winner = winner;
+            g.gameStatus = 'finished';
+            g.endTime = Date.now();
+            this._hint((loser === 1 ? '黑方' : '白方') + '认输');
+            this._showResult({ winner: winner, winLine: null, reason: 'resign' });
+        }
+
+        /* --- 棋谱导出 / 导入（纯文本坐标，如 "H8 I9 H7"） --- */
+        exportRecord() {
+            const moves = this.game.getMoves();
+            const box = this._$('record-box');
+            const text = moves.map(m => cxy(m.x, m.y)).join(' ');
+            if (box) {
+                box.value = text;
+                if (box.select) box.select();
+            }
+            this._hint(moves.length ? '已生成棋谱（' + moves.length + ' 手），可复制保存' : '本局还没有落子');
+        }
+
+        importRecord() {
+            const box = this._$('record-box');
+            const text = box ? String(box.value || '') : '';
+            const tokens = text.trim().split(/[\s,;，；]+/).filter(Boolean);
+            if (!tokens.length) { this._hint('请先粘贴棋谱，如：H8 I9 H7'); return; }
+
+            const moves = [];
+            for (const tk of tokens) {
+                const m = /^([A-Oa-o])(\d{1,2})$/.exec(tk);
+                if (!m) { this._hint('棋谱格式不对：' + tk); return; }
+                const x = m[1].toUpperCase().charCodeAt(0) - 65;
+                const y = parseInt(m[2], 10) - 1;
+                if (y < 0 || y > 14) { this._hint('坐标越界：' + tk); return; }
+                moves.push({ x: x, y: y });
+            }
+
+            this.setMode('PvP', true);
+            this.newGame();
+            let n = 0;
+            for (const mv of moves) {
+                const r = this.game.placePiece(mv.x, mv.y);
+                if (!r.success) { this._hint('第 ' + (n + 1) + ' 手无法落子（' + cxy(mv.x, mv.y) + '）'); break; }
+                n++;
+                if (r.gameOver) break;
+            }
+            this._render();
+            this._hint('已导入 ' + n + ' 手' + (n < moves.length ? '（后续有非法着法已截断）' : ''));
         }
 
         _applySettingsFromStorage() {
@@ -153,21 +467,37 @@
                 this._refreshAIOverlays();
             });
 
-            // VCF 练习面板：题目下拉 + 开始按钮
+            // VCF 连冲练习：按难度分组的下拉 + 开始 / 提示 / 悔一步 / 重来 / 看答案
             const V = GMK.VCFPractice;
             const sel = this._$('vcf-puzzle-select');
             if (sel && V && Array.isArray(V.PUZZLES)) {
-                for (let i = 0; i < V.PUZZLES.length; i++) {
-                    const p = V.PUZZLES[i];
-                    const opt = document.createElement('option');
-                    opt.value = String(i);
-                    opt.textContent = (i + 1) + '. ' + p.title + (p.difficulty ? '（' + p.difficulty + '）' : '');
-                    if (sel.appendChild) sel.appendChild(opt);
+                for (let lv = 0; lv < V.LEVELS.length; lv++) {
+                    const level = V.LEVELS[lv];
+                    const group = document.createElement('optgroup');
+                    group.label = level.name;
+                    let n = 0;
+                    for (let i = 0; i < V.PUZZLES.length; i++) {
+                        const p = V.PUZZLES[i];
+                        if (p.level !== level.id) continue;
+                        const opt = document.createElement('option');
+                        opt.value = String(i);
+                        opt.textContent = p.title + ' · ' + p.depth + ' 手';
+                        group.appendChild(opt);
+                        n++;
+                    }
+                    if (n) sel.appendChild(group);
                 }
-                this._renderVcfStatus();
+                this._vcfUpdate();
             }
-            const vstart = this._$('btn-vcf-start');
-            if (vstart) vstart.addEventListener('click', () => this._startVcf());
+            const bindVcf = (id, fn) => {
+                const el = this._$(id);
+                if (el) el.addEventListener('click', () => { this._vcfStopDemo(); fn.call(this); });
+            };
+            bindVcf('btn-vcf-start', this._startVcf);
+            bindVcf('btn-vcf-hint', this._vcfHint);
+            bindVcf('btn-vcf-undo', this._vcfUndo);
+            bindVcf('btn-vcf-restart', this._vcfRestart);
+            bindVcf('btn-vcf-solution', this._vcfSolution);
 
             // 每步落子后：填 #ai-best-move + 威胁扫描 + 优势条（P0/P1）
             this.game.on('move', () => this._onMoveAfterHook());
@@ -185,19 +515,9 @@
             const g = this.game;
             const board = g.getBoardState();
 
-            // ① VCF 练习：落子后校验是否已解
-            //    ⚠ 顺序敏感：解开 VCF 的那一手本身必然成五 → placePiece 后
-            //    gameStatus 立刻变 finished。旧实现把「终局早退」放在本段之前，
-            //    于是「已解」永远不触发、record 也永远不写入。故本段必须前置。
-            if (g.gameMode === 'VCF_PRACTICE' && this.vcfPuzzle && GMK.VCFPractice.checkSolved(board)) {
-                const ms = this.vcfStartTs ? Date.now() - this.vcfStartTs : 0;
-                GMK.VCFPractice.record(this.vcfPuzzle.id, ms);
-                const best = GMK.VCFPractice.getBest()[this.vcfPuzzle.id];
-                const st = this._$('vcf-status');
-                if (st) st.textContent = '已解 · 用时 ' + ms + 'ms · 历史最佳 ' + (best || ms) + 'ms';
-                this._hint('VCF 练习完成！');
-                this.vcfPuzzle = null;
-            }
+            // ① VCF 练习：判定完全交给会话状态机（_vcfPlay / VcfSession.play），
+            //    这里不再做「是否成五」的粗判，否则会把「走错但碰巧成五」也算通过。
+            if (g.gameMode === 'VCF_PRACTICE') return;
 
             if (g.gameStatus === 'finished') { this._clearAIOverlays(); return; }
             if (!GMK.Analysis) return;
@@ -391,31 +711,185 @@
             this._render();
         }
 
-        /** VCF 练习：选题 → 载入棋盘 → 切 VCF_PRACTICE 模式 → 计时 */
+        /* ---------------- VCF 连冲练习 ---------------- */
+
+        /** 选题 → 建会话 → 载入棋盘 → 切 VCF_PRACTICE 模式 */
         _startVcf() {
             const V = GMK.VCFPractice;
-            if (!V) return;
+            if (!V || !V.create) return;
             const sel = this._$('vcf-puzzle-select');
             const idx = sel ? (parseInt(sel.value, 10) || 0) : 0;
-            const p = V.start(idx);
+            const p = V.PUZZLES[idx];
             if (!p) return;
+
+            this.vcf = V.create(idx);
+            this.vcf.startedAt = Date.now();
             this.vcfPuzzle = p;
             this.vcfStartTs = Date.now();
+
             this.game.setGameMode('VCF_PRACTICE');
-            if (!V.loadBoard(this.game)) { this._hint('题目载入失败'); return; }
+            this._vcfSync();
             this._updatePanelVisibility();
-            this._render();
-            this._hint('VCF 练习：' + p.title + '（' + (p.difficulty || '—') + '）— ' + p.description);
+            this._vcfUpdate();
+            this._hint('VCF 连冲：' + p.title + ' —— ' + p.lesson);
         }
 
-        /** VCF 面板状态：显示历史最佳 */
-        _renderVcfStatus() {
-            const el = this._$('vcf-status');
-            if (!el) return;
-            const best = GMK.VCFPractice.getBest();
+        /** 把会话棋盘同步到真实 game 上（渲染 / 最后一手标记的唯一入口） */
+        _vcfSync() {
+            const s = this.vcf;
+            if (!s) return;
+            this.game.loadCustomState({
+                board: s.board2d,
+                currentPlayer: 1,
+                gameStatus: s.state === 'solved' ? 'finished' : 'playing'
+            });
+            this.renderer.setWinLine(null);
+            const last = s.lastMove;
+            if (last) {
+                this.renderer.setHint({ x: last.x, y: last.y });
+                setTimeout(() => this.renderer.clearHint(), 700);
+            } else {
+                this.renderer.clearHint();
+            }
+            this._render();
+        }
+
+        /** 面板状态刷新：进度条 / 手数 / 提示文案 */
+        _vcfUpdate(msg, kind) {
+            const s = this.vcf;
             const p = this.vcfPuzzle;
-            if (p && best[p.id]) el.textContent = '历史最佳 ' + best[p.id] + 'ms';
-            else el.textContent = '—';
+            const set = (id, text) => { const el = this._$(id); if (el) el.textContent = text; };
+            const msgEl = this._$('vcf-status');
+            const fill = this._$('vcf-bar-fill');
+
+            const total = GMK.VCFPractice.PUZZLES.length;
+            set('vcf-count', GMK.VCFPractice.solvedCount() + '/' + total);
+
+            if (!s || !p) {
+                set('vcf-level', '未开始');
+                set('vcf-depth', '目标 — 手');
+                set('vcf-steps', '已走 0 手');
+                if (fill) fill.style.width = '0%';
+                if (msgEl) { msgEl.textContent = msg || '选一道题开始。'; msgEl.className = 'vcf-msg'; }
+                return;
+            }
+
+            set('vcf-level', p.levelName + ' · ' + p.title);
+            set('vcf-depth', '目标 ' + p.depth + ' 手');
+            set('vcf-steps', '已走 ' + s.steps + ' 手');
+
+            const lv = this._$('vcf-level');
+            if (lv) lv.classList.add('is-on');
+
+            const pct = s.state === 'solved' ? 100 : Math.min(99, Math.round(s.steps / Math.max(1, p.depth) * 100));
+            if (fill) fill.style.width = pct + '%';
+
+            if (msgEl) {
+                if (msg) {
+                    msgEl.textContent = msg;
+                    msgEl.className = 'vcf-msg' + (kind ? ' is-' + kind : '');
+                } else if (s.state === 'solved') {
+                    const ms = s.elapsed;
+                    // 只在首次通关时写记录，避免每次刷新面板都累加 times
+                    if (!s._recorded) { s._recorded = true; GMK.VCFPractice.record(p.id, ms, s.steps); }
+                    const rec = GMK.VCFPractice.getRecord(p.id) || { ms: ms };
+                    msgEl.textContent = '已解 · ' + s.steps + ' 手 · 用时 ' + (ms / 1000).toFixed(1) + 's · 最佳 ' +
+                        (rec.ms / 1000).toFixed(1) + 's';
+                    msgEl.className = 'vcf-msg is-ok';
+                } else if (s.state === 'failed') {
+                    msgEl.textContent = '这条线走死了 —— 后面没有连冲了。悔一步或重来。';
+                    msgEl.className = 'vcf-msg is-bad';
+                } else {
+                    msgEl.textContent = '轮到你（黑）。每一手都必须是冲四。';
+                    msgEl.className = 'vcf-msg';
+                }
+            }
+        }
+
+        /** 玩家在练习模式下落子 */
+        _vcfPlay(x, y) {
+            const s = this.vcf;
+            if (!s || s.state !== 'playing') { this._hint('先点「开始」载入一道题'); return; }
+            const r = s.play(x, y);
+
+            if (r.code === 'NOT_FOUR') {
+                this._vcfUpdate('这一手不是冲四 —— 对方不必应，攻击链就断了。想想哪里能形成四。', 'bad');
+                this._hint('不是冲四：对方没有必须应的一手');
+                return;
+            }
+            if (r.code === 'OCCUPIED') { this._hint('这里已经有子了'); return; }
+
+            this._vcfSync();
+
+            if (r.code === 'FOUR') {
+                if (r.dead) {
+                    this._vcfUpdate('对方应手之后，你已无冲四可走 —— 这条线不成立。', 'bad');
+                } else {
+                    const nm = GMK.VCFPractice.name(r.reply);
+                    this._vcfUpdate('冲四成立，对方被迫挡 ' + nm + '。继续找下一个四。', 'ok');
+                }
+            } else if (r.code === 'DOUBLE') {
+                this._vcfUpdate();
+                this._hint('活四 / 双四！对方挡不住两端 —— 连冲完成');
+            } else if (r.code === 'WIN') {
+                this._vcfUpdate();
+                this._hint('五连！连冲完成');
+            }
+        }
+
+        _vcfHint() {
+            const s = this.vcf;
+            if (!s || s.state !== 'playing') return;
+            const h = s.hint();
+            if (!h) { this._vcfUpdate('这个局面已经没有连冲了，悔一步试试。', 'bad'); return; }
+            this.renderer.setHint({ x: h.x, y: h.y });
+            setTimeout(() => this.renderer.clearHint(), 1500);
+            this._vcfUpdate('提示：' + GMK.VCFPractice.name(h) + ' 可以形成冲四。', '');
+        }
+
+        _vcfUndo() {
+            const s = this.vcf;
+            if (!s) return;
+            if (!s.undo()) { this._vcfUpdate('没有可撤的回合了。', ''); return; }
+            this._vcfSync();
+            this._vcfUpdate('已悔一步。', '');
+        }
+
+        _vcfRestart() {
+            if (!this.vcfPuzzle) return;
+            const idx = GMK.VCFPractice.indexOf(this.vcfPuzzle.id);
+            const sel = this._$('vcf-puzzle-select');
+            if (sel && idx >= 0) sel.value = String(idx);
+            this._startVcf();
+        }
+
+        /** 看答案：把参考连冲线逐步演一遍（每步 550ms，可被新动作打断） */
+        _vcfSolution() {
+            const s = this.vcf;
+            if (!s) return;
+            const line = s.solution();
+            if (!line.length) { this._vcfUpdate('这道题当前局面算不出连冲线。', 'bad'); return; }
+
+            const idx = GMK.VCFPractice.indexOf(this.vcfPuzzle.id);
+            const fresh = GMK.VCFPractice.create(idx);
+            this.vcf = fresh;
+            this._vcfSync();
+            this._vcfUpdate('演示参考线：' + line.length + ' 手连冲。', '');
+
+            let k = 0;
+            const timer = setInterval(() => {
+                if (k >= line.length || this.vcf !== fresh) { clearInterval(timer); return; }
+                const step = line[k++];
+                fresh.play(step.black.x, step.black.y);
+                this._vcfSync();
+                this._vcfUpdate('参考线 第 ' + k + ' 手：' + GMK.VCFPractice.name(step.black) +
+                    (step.white ? ' → 对方挡 ' + GMK.VCFPractice.name(step.white) : ' → 成五'), '');
+            }, 550);
+            this._vcfTimer = timer;
+        }
+
+        _vcfStopDemo() {
+            if (this._vcfTimer) { clearInterval(this._vcfTimer); this._vcfTimer = 0; }
         }
 
         /** 终局 / 新对局：清除威胁高亮、变例与诊断 */
@@ -460,8 +934,15 @@
          */
         _updatePanelVisibility() {
             const m = this.game.gameMode;
-            this._show('ai-analysis-panel', m !== 'EvE');
+            // VCF 练习下没有 AI 对手，分析面板（优势条 / 推荐点）没有意义，一并隐藏
+            const showAnalysis = m !== 'EvE' && m !== 'VCF_PRACTICE';
+            this._show('ai-analysis-panel', showAnalysis);
+            this._show('ai-analysis-empty', !showAnalysis);
             this._show('vcf-panel', true);
+            // 停在「分析」页却没内容时自动挪走，别让用户对着空页
+            if (!showAnalysis && this.tab === 'analysis') {
+                this.showTab(m === 'VCF_PRACTICE' ? 'practice' : 'game');
+            }
         }
 
         setDifficulty(d, silent) {
@@ -488,7 +969,14 @@
 
         newGame() {
             this.eveAutoPlay = false;
+            this._exitReview();        // 复盘状态下开新局：先退回实时棋盘
             this._cancelAIThink();
+            this._vcfStopDemo();
+            this._pending = null;
+            this.renderer.setPending(null);
+            this.closeResultModal();   // 开新局要顺手关掉上一局的结算弹窗，否则它会挡住棋盘
+            this.vcf = null;
+            this.vcfPuzzle = null;
             this.game.reset();
             this.renderer.setWinLine(null);
             this.renderer.clearHint();
@@ -499,22 +987,46 @@
             const names = { PvP: '双人对战开始，黑棋先手', PvE: '人机对战开始，你执黑', EvE: 'AI 对战开始' };
             this._hint(names[this.game.gameMode] || '新对局开始');
             if (this.game.gameMode === 'EvE') this._startEvE();
+            this._vcfUpdate();
         }
 
         undo() {
+            this._exitReview();
             this._cancelAIThink();
-            if (this.game.undo(1)) {
+            const g = this.game;
+            this._pending = null;
+            this.renderer.setPending(null);
+            // 人机对战里「悔棋」的直觉是回到自己上次落子前，
+            // 所以要连 AI 的应手一起撤；否则撤完立刻又轮到 AI，等于没悔。
+            const last = g.moves[g.moves.length - 1];
+            const steps = (g.gameMode === 'PvE' && last && last.player === 2 && g.moves.length >= 2) ? 2 : 1;
+            if (g.undo(steps)) {
                 this._render();
                 this._maybeOpeningRec(); // P2-6：悔回开局窗口时恢复推荐
-                this._hint('已悔一步');
+                this._hint(steps === 2 ? '已悔棋（含 AI 应手）' : '已悔一步');
             }
             else this._hint('没有可悔的棋');
         }
 
         _onPlayerClick(x, y) {
+            if (this.reviewing) { this._hint('复盘模式：点「退出」回到对局'); return; }
             if (this.game.gameStatus === 'finished') return;
             if (this.game.gameMode === 'EvE') { this._hint('机机对战模式，玩家无法操作棋盘'); return; }
+            if (this.game.gameMode === 'VCF_PRACTICE') { this._vcfPlay(x, y); return; }
             if (this.aiThinking) return;
+
+            // 落子确认（防误触）：第一次点只做预览，再点同一格才真正落子
+            if (this.confirmMove) {
+                const p = this._pending;
+                if (!p || p.x !== x || p.y !== y) {
+                    this._pending = { x: x, y: y, player: this.game.currentPlayer };
+                    this.renderer.setPending(this._pending);
+                    this._hint('再点同一格确认落子');
+                    return;
+                }
+                this._pending = null;
+                this.renderer.setPending(null);
+            }
 
             const result = this.game.placePiece(x, y);
             if (!result.success) {
@@ -524,6 +1036,7 @@
             }
 
             this._render();
+            this._beep(result.nextPlayer === 2 ? 520 : 400, 0.06);
 
             if (result.gameOver) { this._showResult(result); return; }
 
@@ -624,6 +1137,8 @@
 
         _render() {
             const g = this.game;
+            // 复盘期间棋盘归 Replayer 驱动，实时渲染会打断回放；只刷新侧栏
+            if (this.reviewing) { this._paintMoveList(); this._paintTimer(); return; }
             const last = g.getLastMove();
             // 威胁点：仅威胁开关开启且处于对局中时绘制
             const threat = (this.showThreat && this._currentThreat &&
@@ -640,11 +1155,15 @@
                 : (g.currentPlayer === 1 ? '黑方' : '白方') + '行棋';
             const mv = this._$('move-count');
             if (mv) mv.textContent = '第 ' + info.moveCount + ' 手';
+            this._paintMoveList();
+            this._paintTimer();
         }
 
         _showResult(result) {
             const g = this.game;
             this._cancelAIThink();
+            this._recordResult(result.winner);
+            this._beep(result.winner === 1 ? 880 : 300, 0.18);
             const title = this._$('result-title'), detail = this._$('result-detail'), modal = this._$('game-result-modal');
             if (!title || !modal) return;
             if (result.winner === 0) { title.textContent = '平局'; detail.textContent = '棋盘已满，不分胜负'; }
@@ -669,17 +1188,59 @@
         /* ---------------- 快捷键 ---------------- */
         bindShortcuts() {
             document.addEventListener('keydown', e => {
-                if (e.key === 'u' || e.key === 'U') this.undo();
-                if (e.key === 'n' || e.key === 'N') this.newGame();
-                if (e.key === 'Escape') this._show('game-result-modal', false);
+                // 输入框里不抢按键（棋谱粘贴、高级强度输入）
+                const tag = e.target && e.target.tagName;
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+                const k = e.key;
+
+                if (k === 'Escape') {
+                    this._show('game-result-modal', false);
+                    this._exitReview();
+                    this.cursor = null;
+                    this.renderer.setCursor(null);
+                    this._pending = null;
+                    this.renderer.setPending(null);
+                    return;
+                }
+
+                // 方向键移动光标（键盘用户 / 无障碍）
+                if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'ArrowUp' || k === 'ArrowDown') {
+                    if (!this.cursor) this.cursor = { x: 7, y: 7 };
+                    if (k === 'ArrowLeft') this.cursor.x = Math.max(0, this.cursor.x - 1);
+                    if (k === 'ArrowRight') this.cursor.x = Math.min(14, this.cursor.x + 1);
+                    if (k === 'ArrowUp') this.cursor.y = Math.max(0, this.cursor.y - 1);
+                    if (k === 'ArrowDown') this.cursor.y = Math.min(14, this.cursor.y + 1);
+                    e.preventDefault();
+                    this.renderer.setCursor(this.cursor);
+                    const ind = this._$('cursor-indicator');
+                    if (ind) ind.textContent = cxy(this.cursor.x, this.cursor.y);
+                    return;
+                }
+
+                // 回车 / 空格：在光标处落子
+                if (k === 'Enter' || k === ' ') {
+                    e.preventDefault();
+                    const c = this.cursor || { x: 7, y: 7 };
+                    this.cursor = c;
+                    this.renderer.setCursor(c);
+                    this._onPlayerClick(c.x, c.y);
+                    return;
+                }
+
+                if (k === 'u' || k === 'U') this.undo();
+                if (k === 'n' || k === 'N') this.newGame();
+                if (k === 'r' || k === 'R') this.resign();
+                if (k === 'h' || k === 'H') {
+                    if (this.game.gameMode === 'VCF_PRACTICE') this._vcfHint();
+                    else this._runDeepEval();
+                }
             });
         }
 
         closeResultModal() {
             const m = this._$('game-result-modal');
             if (m) m.classList.remove('active');
-            const btn = this._$('close-result-btn');
-            if (btn) btn.addEventListener('click', () => this.closeResultModal());
         }
 
         start() {

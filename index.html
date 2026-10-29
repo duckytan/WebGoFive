@@ -17,30 +17,54 @@
     <link rel="stylesheet" href="css/themes.css">
     <link rel="stylesheet" href="css/animations.css">
     <style>
-        /* AI 分析 / VCF 面板（AI 增强 T3；样式内联，不改动既有 css 文件） */
+        /* AI 分析 / VCF 面板。
+           全部走主题变量 —— 旧版把这些面板写死在深色配色上（#9aa8c0 / #e8eefc / #141a28），
+           一换到木质或浅色主题就变成「浅灰字压奶油底」，几乎看不见。 */
         .ai-analysis-panel { margin-top: 4px; }
         .advantage-bar { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
-        .adv-tag { min-width: 52px; text-align: center; font-size: 12px; padding: 2px 6px; border-radius: 4px; background: #2a3a5a; color: #d8e2f4; }
+        .adv-tag { min-width: 52px; text-align: center; font-size: 12px; padding: 2px 6px; border-radius: 4px;
+            background: var(--surface-2); color: var(--text); }
         .adv-tag.is-black { background: #1a1a1a; color: #ffd24d; }
         .adv-tag.is-white { background: #e8e8e8; color: #222; }
-        .adv-track { flex: 1; height: 10px; border-radius: 5px; overflow: hidden; background: linear-gradient(90deg, #222 0%, #555 45%, #d8d8d8 55%, #fff 100%); }
-        .adv-fill { height: 100%; width: 50%; background: rgba(80, 160, 255, 0.85); transition: width .3s ease; }
+        .adv-track { flex: 1; height: 10px; border-radius: 5px; overflow: hidden;
+            background: linear-gradient(90deg, #222 0%, #555 45%, #d8d8d8 55%, #fff 100%); }
+        .adv-fill { height: 100%; width: 50%; border-right: 3px solid var(--text); transition: width .3s ease; }
         .ai-line { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-size: 13px; }
-        .ai-key { color: #9aa8c0; min-width: 48px; }
-        .ai-val { color: #e8eefc; font-weight: 600; }
+        .ai-key { color: var(--text-dim); min-width: 48px; }
+        .ai-val { color: var(--text); font-weight: 600; }
         .ai-source { font-size: 11px; }
-        .pv-list { margin: 4px 0 4px 18px; padding-left: 0; font-size: 12px; color: #b9c4da; }
+        .pv-list { margin: 4px 0 4px 18px; padding-left: 0; font-size: 12px; color: var(--text-dim); }
         .pv-list li { margin: 2px 0; }
         .vcf-row { display: flex; gap: 6px; margin: 4px 0; }
-        .vcf-select { flex: 1; padding: 4px 6px; border-radius: 4px; border: 1px solid #3a4a6a; background: #141a28; color: #d8e2f4; }
-        .switch-row.sm { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #b9c4da; }
+        .vcf-select { flex: 1; min-width: 0; padding: 5px 6px; border-radius: 6px;
+            border: 1px solid var(--surface-2); background: var(--surface); color: var(--text); }
+        /* VCF 连冲练习（重构） */
+        .vcf-intro { font-size: 12px; line-height: 1.55; color: var(--text-dim); margin: 2px 0 8px; }
+        .vcf-intro b { color: var(--accent); }
+        .vcf-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+        .vcf-chip { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--surface-2); color: var(--text-dim); border: 1px solid rgba(128,128,128,.25); }
+        .vcf-chip.is-on { color: var(--accent); border-color: currentColor; }
+        .vcf-bar { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; margin: 4px 0 6px; }
+        .vcf-bar-fill { height: 100%; width: 0; background: var(--accent); transition: width .25s ease; }
+        .vcf-msg { font-size: 12px; line-height: 1.5; margin: 2px 0 6px; min-height: 18px; color: var(--text-dim); }
+        .vcf-msg.is-ok { color: #2fa88a; }
+        .vcf-msg.is-bad { color: #e0533d; }
+        .vcf-actions { flex-wrap: wrap; }
+        /* 棋谱 / 战绩 */
+        .record-box { width: 100%; box-sizing: border-box; margin-top: 6px; padding: 6px 8px;
+            border-radius: 6px; border: 1px solid rgba(128,128,128,.3); background: var(--surface-2);
+            color: var(--text); font-size: 12px; line-height: 1.5; resize: vertical;
+            font-family: ui-monospace, Consolas, monospace; }
+        .stat-line { margin-top: 6px; font-size: 12px; color: var(--text-dim); }
+        .switch-row.sm { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-dim); }
         .switch-row.sm input { margin: 0; }
         .btn.sm { padding: 3px 10px; font-size: 12px; }
         /* 高级棋力选项（P2-5；样式内联，沿用 AI 面板做法） */
         .adv-field-row { display: flex; gap: 6px; }
-        .adv-field { display: flex; align-items: center; gap: 3px; font-size: 12px; color: #b9c4da; flex: 1; min-width: 0; }
-        .adv-field input { width: 50px; min-width: 0; padding: 3px 4px; border-radius: 4px; border: 1px solid #3a4a6a; background: #141a28; color: #d8e2f4; }
-        .adv-unit { color: #7284a3; }
+        .adv-field { display: flex; align-items: center; gap: 3px; font-size: 12px; color: var(--text-dim); flex: 1; min-width: 0; }
+        .adv-field input { width: 50px; min-width: 0; padding: 3px 4px; border-radius: 4px;
+            border: 1px solid var(--surface-2); background: var(--surface); color: var(--text); }
+        .adv-unit { color: var(--text-dim); opacity: .8; }
         @media (max-width: 480px) {
             .ai-analysis-panel, .vcf-panel { width: 100%; }
         }
@@ -55,7 +79,7 @@
 </div>
 
 <header class="app-header">
-    <h1 class="app-title">WebGoFive <span class="app-sub">H5 五子棋</span><span id="app-version" class="app-version" title="当前版本">v2.2.0</span></h1>
+    <h1 class="app-title">WebGoFive <span class="app-sub">H5 五子棋</span><span id="app-version" class="app-version" title="当前版本">v2.4.0</span></h1>
     <div class="header-actions">
         <button id="replay-btn" class="btn ghost" type="button" title="回放本局">回放</button>
         <button id="new-game-btn" class="btn primary" type="button">新游戏</button>
@@ -72,64 +96,109 @@
         <div class="board-meta">
             <div class="meta-line"><span id="current-player" class="tag">黑方</span></div>
             <div class="meta-line"><span id="move-count" class="tag">第 0 手</span></div>
+            <div class="meta-line"><span id="elapsed" class="tag dim">00:00</span></div>
             <div class="meta-line"><span id="cursor-indicator" class="tag dim">—</span></div>
         </div>
     </section>
 
-    <!-- 侧栏控制 -->
+    <!-- 侧栏控制（分页：对局 / 练习 / 分析 / 设置） -->
     <aside class="control-section" aria-label="游戏控制">
-        <fieldset class="ctrl-group">
-            <legend>模式</legend>
-            <div class="btn-row">
-                <button id="mode-PvP" class="btn" data-mode="PvP">双人</button>
-                <button id="mode-PvE" class="btn active" data-mode="PvE">人机</button>
-                <button id="mode-EvE" class="btn" data-mode="EvE">AI 对打</button>
-            </div>
-        </fieldset>
+        <div class="ctrl-tabs" role="tablist" aria-label="控制面板分页">
+            <button class="ctrl-tab is-on" type="button" role="tab" aria-selected="true"
+                    data-tab="game" id="tab-game">对局</button>
+            <button class="ctrl-tab" type="button" role="tab" aria-selected="false"
+                    data-tab="practice" id="tab-practice">练习</button>
+            <button class="ctrl-tab" type="button" role="tab" aria-selected="false"
+                    data-tab="analysis" id="tab-analysis">分析</button>
+            <button class="ctrl-tab" type="button" role="tab" aria-selected="false"
+                    data-tab="settings" id="tab-settings">设置</button>
+        </div>
 
-        <fieldset class="ctrl-group">
-            <legend>AI 难度</legend>
-            <div class="btn-row">
-                <button id="diff-BEGINNER" class="btn" data-diff="BEGINNER">入门</button>
-                <button id="diff-NORMAL" class="btn active" data-diff="NORMAL">普通</button>
-                <button id="diff-HARD" class="btn" data-diff="HARD">困难</button>
-                <button id="diff-HELL" class="btn" data-diff="HELL">地狱</button>
-            </div>
-        </fieldset>
+        <!-- ==================== 对局 ==================== -->
+        <div class="ctrl-pane is-on" data-pane="game" role="tabpanel" aria-labelledby="tab-game">
 
-        <!-- ===== 高级棋力选项（P2-5：仅 HELL 难度显示，透传 getBestMove）===== -->
-        <fieldset id="strength-advanced" class="ctrl-group" style="display:none">
-            <legend>高级强度（地狱）</legend>
-            <div class="adv-field-row">
-                <label class="adv-field">时间<input id="adv-time" type="number" min="100" max="10000" step="100"><span class="adv-unit">ms</span></label>
-                <label class="adv-field">深度<input id="adv-depth" type="number" min="1" max="24" step="1"><span class="adv-unit">层</span></label>
-                <label class="adv-field">候选<input id="adv-cand" type="number" min="4" max="64" step="1"><span class="adv-unit">个</span></label>
-            </div>
-            <div class="btn-row">
-                <button id="btn-strength-reset" class="btn sm" type="button">恢复默认</button>
-            </div>
-        </fieldset>
+            <fieldset class="ctrl-group">
+                <legend>模式</legend>
+                <div class="btn-row">
+                    <button id="mode-PvP" class="btn" data-mode="PvP">双人</button>
+                    <button id="mode-PvE" class="btn active" data-mode="PvE">人机</button>
+                    <button id="mode-EvE" class="btn" data-mode="EvE">AI 对打</button>
+                </div>
+            </fieldset>
 
-        <fieldset class="ctrl-group">
-            <legend>主题</legend>
-            <div class="btn-row">
-                <button id="theme-wood" class="btn active" data-theme="wood">木质</button>
-                <button id="theme-dark" class="btn" data-theme="dark">深色</button>
-                <button id="theme-light" class="btn" data-theme="light">浅色</button>
+            <fieldset class="ctrl-group">
+                <legend>AI 难度</legend>
+                <div class="btn-row">
+                    <button id="diff-BEGINNER" class="btn" data-diff="BEGINNER">入门</button>
+                    <button id="diff-NORMAL" class="btn active" data-diff="NORMAL">普通</button>
+                    <button id="diff-HARD" class="btn" data-diff="HARD">困难</button>
+                    <button id="diff-HELL" class="btn" data-diff="HELL">地狱</button>
+                </div>
+            </fieldset>
+
+            <fieldset class="ctrl-group">
+                <legend>对局操作</legend>
+                <div class="btn-row">
+                    <button id="resign-btn" class="btn" type="button">认输</button>
+                    <button id="btn-export" class="btn" type="button">导出棋谱</button>
+                    <button id="btn-import" class="btn" type="button">导入棋谱</button>
+                </div>
+                <textarea id="record-box" class="record-box" rows="2" spellcheck="false"
+                          placeholder="点「导出」生成棋谱，或粘贴棋谱后点「导入」"></textarea>
+                <div class="stat-line" id="stat-line">战绩：—</div>
+            </fieldset>
+
+            <fieldset class="ctrl-group">
+                <legend>手数 <span class="mv-count" id="mv-count">0 手</span></legend>
+                <ol id="move-list" class="move-list" aria-label="落子记录">
+                    <li class="mv-empty">还没有落子</li>
+                </ol>
+                <p class="mv-tip">点任意一手可复盘到那一步。</p>
+            </fieldset>
+        </div>
+
+        <!-- ==================== 练习 ==================== -->
+        <div class="ctrl-pane" data-pane="practice" role="tabpanel" aria-labelledby="tab-practice">
+            <!-- ===== VCF 连冲练习（重构：真连冲 + 对手强制应手）===== -->
+            <div id="vcf-panel" class="ctrl-group vcf-panel">
+                <legend>VCF 连冲练习 <span class="vcf-count" id="vcf-count">0/0</span></legend>
+
+                <p class="vcf-intro">
+                    每一手都必须是<b>四</b> —— 对方只有一个点能挡，只能跟着你走。
+                    把这样的绝对先手串起来，就是 VCF。
+                </p>
+
+                <div class="vcf-row">
+                    <select id="vcf-puzzle-select" class="vcf-select" aria-label="题目"></select>
+                    <button id="btn-vcf-start" class="btn sm primary" type="button">开始</button>
+                </div>
+
+                <div class="vcf-chips">
+                    <span class="vcf-chip" id="vcf-level">未开始</span>
+                    <span class="vcf-chip" id="vcf-depth">目标 — 手</span>
+                    <span class="vcf-chip" id="vcf-steps">已走 0 手</span>
+                </div>
+
+                <div class="vcf-bar" role="progressbar" aria-label="连冲进度">
+                    <div class="vcf-bar-fill" id="vcf-bar-fill"></div>
+                </div>
+
+                <p class="vcf-msg" id="vcf-status">选一道题开始。</p>
+
+                <div class="btn-row vcf-actions">
+                    <button id="btn-vcf-hint" class="btn sm" type="button">提示</button>
+                    <button id="btn-vcf-undo" class="btn sm" type="button">悔一步</button>
+                    <button id="btn-vcf-restart" class="btn sm" type="button">重来</button>
+                    <button id="btn-vcf-solution" class="btn sm ghost" type="button">看答案</button>
+                </div>
             </div>
-        </fieldset>
+        </div>
 
-        <fieldset class="ctrl-group">
-            <legend>显示</legend>
-            <label class="switch-row">
-                <span>棋盘坐标</span>
-                <input id="toggle-coords" type="checkbox" checked>
-            </label>
-        </fieldset>
-
-        <!-- ===== AI 分析面板（PvP/PvE 显示，EvE 隐藏）===== -->
-        <div id="ai-analysis-panel" class="ctrl-group ai-analysis-panel">
-            <legend>AI 分析</legend>
+        <!-- ==================== 分析 ==================== -->
+        <div class="ctrl-pane" data-pane="analysis" role="tabpanel" aria-labelledby="tab-analysis">
+            <!-- ===== AI 分析面板（PvP/PvE 显示，EvE 隐藏）===== -->
+            <div id="ai-analysis-panel" class="ctrl-group ai-analysis-panel">
+                <legend>AI 分析</legend>
 
             <!-- 形势优势条（P1）：黑领先 / 白领先 / 均势 -->
             <div id="ai-advantage-bar" class="advantage-bar" title="形势评估条">
@@ -171,17 +240,51 @@
             </div>
         </div>
 
-        <!-- ===== VCF 练习面板（P1）===== -->
-        <div id="vcf-panel" class="ctrl-group vcf-panel">
-            <legend>VCF 练习</legend>
-            <div class="vcf-row">
-                <select id="vcf-puzzle-select" class="vcf-select" aria-label="题目"></select>
-                <button id="btn-vcf-start" class="btn sm" type="button">开始</button>
-            </div>
-            <div class="ai-line">
-                <span class="ai-key">成绩</span>
-                <span class="ai-val dim" id="vcf-status">—</span>
-            </div>
+            <p id="ai-analysis-empty" class="pane-empty" style="display:none">
+                AI 对打模式下没有「对手」，分析面板暂停显示。
+            </p>
+        </div>
+
+        <!-- ==================== 设置 ==================== -->
+        <div class="ctrl-pane" data-pane="settings" role="tabpanel" aria-labelledby="tab-settings">
+
+            <!-- ===== 高级棋力选项（P2-5：仅 HELL 难度显示，透传 getBestMove）===== -->
+            <fieldset id="strength-advanced" class="ctrl-group" style="display:none">
+                <legend>高级强度（地狱）</legend>
+                <div class="adv-field-row">
+                    <label class="adv-field">时间<input id="adv-time" type="number" min="100" max="10000" step="100"><span class="adv-unit">ms</span></label>
+                    <label class="adv-field">深度<input id="adv-depth" type="number" min="1" max="24" step="1"><span class="adv-unit">层</span></label>
+                    <label class="adv-field">候选<input id="adv-cand" type="number" min="4" max="64" step="1"><span class="adv-unit">个</span></label>
+                </div>
+                <div class="btn-row">
+                    <button id="btn-strength-reset" class="btn sm" type="button">恢复默认</button>
+                </div>
+            </fieldset>
+
+            <fieldset class="ctrl-group">
+                <legend>主题</legend>
+                <div class="btn-row">
+                    <button id="theme-wood" class="btn active" data-theme="wood">木质</button>
+                    <button id="theme-dark" class="btn" data-theme="dark">深色</button>
+                    <button id="theme-light" class="btn" data-theme="light">浅色</button>
+                </div>
+            </fieldset>
+
+            <fieldset class="ctrl-group">
+                <legend>显示</legend>
+                <label class="switch-row">
+                    <span>棋盘坐标</span>
+                    <input id="toggle-coords" type="checkbox" checked>
+                </label>
+                <label class="switch-row">
+                    <span>落子需确认</span>
+                    <input id="toggle-confirm" type="checkbox">
+                </label>
+                <label class="switch-row">
+                    <span>落子音效</span>
+                    <input id="toggle-sound" type="checkbox" checked>
+                </label>
+            </fieldset>
         </div>
     </aside>
 </main>
@@ -202,21 +305,22 @@
     </div>
 </div>
 
-<!-- 回放面板 -->
+<!-- 回放面板（复盘：步进 / 快进 / 跳步） -->
 <div id="replay-player" class="replay-player" style="display:none">
     <div class="replay-controls">
-        <button id="rp-first" class="btn sm" type="button">⏮</button>
-        <button id="rp-back" class="btn sm" type="button">◀</button>
-        <button id="rp-play" class="btn sm primary" type="button">▶</button>
-        <button id="rp-fwd" class="btn sm" type="button">▶</button>
-        <button id="rp-last" class="btn sm" type="button">⏭</button>
+        <button id="rp-first" class="btn sm" type="button" title="回到开局">⏮</button>
+        <button id="rp-back" class="btn sm" type="button" title="上一手">◀</button>
+        <button id="rp-play" class="btn sm primary" type="button" title="自动播放">▶</button>
+        <button id="rp-fwd" class="btn sm" type="button" title="下一手">▶|</button>
+        <button id="rp-last" class="btn sm" type="button" title="跳到末手">⏭</button>
         <span id="rp-pos" class="rp-pos">0 / 0</span>
+        <button id="rp-exit" class="btn sm ghost" type="button" title="退出复盘">退出</button>
     </div>
 </div>
 
 <footer class="app-footer">
     <span>自研引擎 GMK · PVS + VCF + RIF 禁手</span>
-    <span class="dim">快捷键：N 新游戏 · U 悔棋 · Esc 关弹窗</span>
+    <span class="dim">快捷键：←→↑↓ 移动 · Enter 落子 · H 提示 · U 悔棋 · N 新局 · R 认输</span>
 </footer>
 
 <!-- ===== 脚本加载顺序（API-CONTRACT §1）===== -->

@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-10-28T21:18:11.548Z",
+  "generatedAt": "2026-10-29T03:29:59.376Z",
   "verdict": "PASS",
-  "unitAssertions": 218,
+  "unitAssertions": 316,
   "e2e": {
-    "pass": 93,
+    "pass": 179,
     "fail": 0,
-    "total": 93,
-    "suites": 10
+    "total": 179,
+    "suites": 12
   },
   "problems": []
 }

@@ -25,7 +25,7 @@ console.log('\n=== 验收闸门 · ' + new Date().toISOString() + ' ===\n');
 
 // 1. 单元测试（6 套引擎/装配/P2 逻辑）
 console.log('— 单元测试（引擎 + 装配 + P2）—');
-const unitSets = ['engine', 'forbidden', 'vcf', 'search', 'loadorder', 'tunable'];
+const unitSets = ['engine', 'forbidden', 'vcf', 'vcf-practice', 'search', 'loadorder', 'tunable', 'replay'];
 let unitAssertions = 0;
 for (const s of unitSets) {
     const out = execSync('node ' + path.join(ROOT, 'tests', 'engine', s + '.test.js'), { encoding: 'utf8', cwd: ROOT });

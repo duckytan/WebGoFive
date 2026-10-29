@@ -10,7 +10,7 @@ const { boot, shutdown, runSuite, ROOT } = require('./harness');
 const SUITES = [
     '01-load', '02-rules', '03-ai', '04-modes',
     '05-settings', '06-persistence', '07-mobile', '08-pwa',
-    '09-ai-panel', '10-strength-opening'
+    '09-ai-panel', '10-strength-opening', '11-ux', '12-layout'
 ];
 
 (async () => {

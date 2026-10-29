@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-10-28T21:18:11.519Z",
+  "generatedAt": "2026-10-29T03:29:59.296Z",
   "browser": "(local Edge)",
-  "pass": 93,
+  "pass": 179,
   "fail": 0,
-  "total": 93,
+  "total": 179,
   "results": [
     {
       "suite": "01-load",
@@ -55,13 +55,25 @@
     },
     {
       "suite": "09-ai-panel",
-      "pass": 11,
+      "pass": 22,
       "fail": 0,
       "failures": []
     },
     {
       "suite": "10-strength-opening",
       "pass": 14,
+      "fail": 0,
+      "failures": []
+    },
+    {
+      "suite": "11-ux",
+      "pass": 25,
+      "fail": 0,
+      "failures": []
+    },
+    {
+      "suite": "12-layout",
+      "pass": 50,
       "fail": 0,
       "failures": []
     }

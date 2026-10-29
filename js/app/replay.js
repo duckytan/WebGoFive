@@ -31,7 +31,9 @@
         }
 
         _emit() {
-            if (this._onFrame) this._onFrame(this._boardAt(this.idx), Math.max(0, this.idx));
+            // 传原始 idx（可能是 -1 = 开局空盘），让上层能区分「第 1 手」与「还没开始」；
+            // 早期版本在这里做了 Math.max(0, idx)，导致「回到开局」永远画着第 1 手。
+            if (this._onFrame) this._onFrame(this._boardAt(this.idx), this.idx);
         }
 
         step() {

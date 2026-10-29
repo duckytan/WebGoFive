@@ -1,7 +1,7 @@
 {
   "name": "H5 五子棋 · 自研 AI 引擎",
   "short_name": "五子棋",
-  "version": "2.2.0",
+  "version": "2.4.0",
   "description": "内置自研 AI 引擎的五子棋：人机 / 双人 / 机机对战、AI 分析与威胁提示、冲四练习、开局推荐、棋局存档回放，可离线游玩。",
   "lang": "zh-CN",
   "dir": "ltr",

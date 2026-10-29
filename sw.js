@@ -11,7 +11,7 @@
  */
 'use strict';
 
-const VERSION = '2.2.0';
+const VERSION = '2.4.0';
 const CACHE_NAME = 'gomoku-shell-v' + VERSION;
 
 // 必须与 index.html 实际加载的资源一致：

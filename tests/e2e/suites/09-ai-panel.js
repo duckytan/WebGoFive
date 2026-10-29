@@ -57,44 +57,81 @@ async function run(t, { page }) {
         c.dispatchEvent(new Event('change'));
     });
 
-    // ⑤ VCF：题库 5 道 + 开始练习 + 校验
-    t.step('VCF 5 题流程');
+    // ⑤ VCF 连冲练习：题库 9 道 + 真连冲判定 + 撤销 + 通关记录
+    t.step('VCF 连冲练习');
     const puzzleCount = await page.evaluate(() => {
         const sel = document.getElementById('vcf-puzzle-select');
         return sel ? sel.options.length : 0;
     });
-    t.eq(puzzleCount, 5, '#vcf-puzzle-select 含 5 道题');
+    const expected = await page.evaluate(() => window.GMK.VCFPractice.PUZZLES.length);
+    t.eq(puzzleCount, expected, '#vcf-puzzle-select 题数与题库一致');
+    t.ok(expected >= 8, '题库至少 8 道', expected + ' 道');
 
-    // 选第 1 题 → 开始 → 按 solution 落子 → 面板提示「已解」
-    const sol0 = await page.evaluate(() => window.GMK.VCFPractice.PUZZLES[0].solution[0]);
+    // 开始第 2 题（两手的题）
     await page.evaluate(() => {
         const sel = document.getElementById('vcf-puzzle-select');
-        sel.value = '0';
+        sel.value = '1';
         document.getElementById('btn-vcf-start').click();
     });
-    await new Promise(r => setTimeout(r, 200));
-    const loaded = await page.evaluate(() => window.game.gameMode === 'VCF_PRACTICE');
-    t.ok(loaded, '开始练习后切到 VCF_PRACTICE 模式');
-    await clickCell(page, sol0[0], sol0[1]);
-    const vcfStatus = await page.evaluate(() => document.getElementById('vcf-status').textContent);
-    t.ok(/已解/.test(vcfStatus), '落成五点后 #vcf-status 提示已解', vcfStatus);
-    const best = await page.evaluate(() => window.GMK.VCFPractice.getBest());
-    t.ok(Object.keys(best).length >= 1, 'record 写入历史最佳');
+    await new Promise(r => setTimeout(r, 150));
+    t.ok(await page.evaluate(() => window.game.gameMode === 'VCF_PRACTICE'), '开始练习后切到 VCF_PRACTICE 模式');
 
-    // 全量题 sanity：每道题 solution 首点落子应使 checkSolved 通过（数据自检）
-    const allOk = await page.evaluate(() => {
+    // 非冲四：必须被拒，棋子不能留在盘上
+    const before = await page.evaluate(() => JSON.stringify(window.demo.vcf.board2d));
+    await page.evaluate(() => window.demo._onPlayerClick(0, 0));
+    const afterBad2 = await page.evaluate(() => ({
+        board: JSON.stringify(window.demo.vcf.board2d),
+        msg: document.getElementById('vcf-status').textContent,
+        steps: window.demo.vcf.steps
+    }));
+    t.eq(afterBad2.board, before, '非冲四被拒后棋盘原样恢复');
+    t.eq(afterBad2.steps, 0, '非冲四不计步数');
+    t.ok(/不是冲四/.test(afterBad2.msg), '#vcf-status 提示「不是冲四」', afterBad2.msg);
+
+    // 提示 → 按提示落子 → 冲四成立 + 对手自动应手
+    const hint = await page.evaluate(() => window.demo.vcf.hint());
+    t.ok(!!hint, 'hint() 给出可用的冲四点', JSON.stringify(hint));
+    await page.evaluate(h => window.demo._onPlayerClick(h.x, h.y), hint);
+    const afterFour = await page.evaluate(() => ({
+        steps: window.demo.vcf.steps,
+        reply: window.demo.vcf.lastReply,
+        msg: document.getElementById('vcf-status').textContent,
+        white: window.game.board.flat().filter(v => v === 2).length
+    }));
+    t.eq(afterFour.steps, 1, '冲四计 1 步');
+    t.ok(!!afterFour.reply, '对手被迫应手（自动落白子）', JSON.stringify(afterFour.reply));
+    t.ok(/冲四成立|活四/.test(afterFour.msg), '#vcf-status 反馈冲四结果', afterFour.msg);
+
+    // 悔一步：棋盘与步数都要还原
+    await page.evaluate(() => window.demo._vcfUndo());
+    t.eq(await page.evaluate(() => window.demo.vcf.steps), 0, '悔一步后步数归零');
+    t.eq(await page.evaluate(() => JSON.stringify(window.demo.vcf.board2d)), before, '悔一步后棋盘还原');
+
+    // 一路照提示走到底 → 通关 + 写入记录
+    const solved = await page.evaluate(() => {
+        const s = window.demo.vcf;
+        let guard = 0;
+        while (guard++ < 20 && s.state === 'playing') {
+            const h = s.hint();
+            if (!h) break;
+            window.demo._onPlayerClick(h.x, h.y);
+        }
+        return { state: s.state, steps: s.steps };
+    });
+    t.eq(solved.state, 'solved', '照提示一路走可以通关');
+    const vcfStatus = await page.evaluate(() => document.getElementById('vcf-status').textContent);
+    t.ok(/已解/.test(vcfStatus), '通关后 #vcf-status 提示已解', vcfStatus);
+    t.ok(await page.evaluate(() => Object.keys(window.GMK.VCFPractice.getBest()).length) >= 1, 'record 写入历史最佳');
+
+    // 每道题的参考线长度必须等于标注深度（题库自检）
+    const depthOk = await page.evaluate(() => {
         const V = window.GMK.VCFPractice;
         for (let i = 0; i < V.PUZZLES.length; i++) {
-            const p = V.PUZZLES[i];
-            V.start(i);
-            const bd = p.board.map(r => r.slice());
-            bd[p.solution[0][1]][p.solution[0][0]] = 1;
-            if (!V.checkSolved(bd)) return false;
-            if (!p.difficulty) return false;
+            if (V.solutionOf(i).length !== V.PUZZLES[i].depth) return false;
         }
         return true;
     });
-    t.ok(allOk, '5 道题均有 difficulty 字段且 solution 首点通过 checkSolved');
+    t.ok(depthOk, '每道题参考线长度与标注深度一致');
 }
 
 module.exports = { run };
