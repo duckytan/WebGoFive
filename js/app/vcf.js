@@ -32,7 +32,9 @@
 
     const SIZE = 15;
     const STORE_KEY = 'gmk_vcf_v2';
+    const CUSTOM_KEY = 'gmk_vcf_custom_v1';   // 自定义题独立存档：「清空进度」不应误删用户摆的题
     let _mem = null;      // 无 localStorage 时的内存存档
+    let _memCustom = null;
 
     /** 扁平字符串（225 字符，'0' 空 / '1' 黑 / '2' 白）→ 15×15 二维数组 */
     function parseBoard(flat) {
@@ -108,7 +110,36 @@
             board: parseBoard(p.board),
             sideToMove: 1
         };
-    });
+    }).concat(loadCustoms());
+
+    /** 读自定义题存档（Node 无 localStorage 时走 _memCustom） */
+    function loadCustoms() {
+        let raw = null;
+        if (typeof localStorage === 'undefined' || !localStorage) {
+            raw = _memCustom;
+        } else {
+            try { raw = localStorage.getItem(CUSTOM_KEY); } catch (e) { raw = null; }
+        }
+        if (!raw) return [];
+        try {
+            const list = JSON.parse(raw);
+            if (!Array.isArray(list)) return [];
+            return list.map(function (p) {
+                return {
+                    id: p.id, level: p.level, levelName: ['', '入门', '进阶', '高阶'][p.level] || '入门',
+                    depth: p.depth, title: p.title, lesson: p.lesson || '自定义题目',
+                    board: parseBoard(p.board), sideToMove: 1, custom: true
+                };
+            }).filter(function (p) { return p.board; });
+        } catch (e) { return []; }
+    }
+
+    function saveCustoms(list) {
+        const s = JSON.stringify(list);
+        _memCustom = s;
+        if (typeof localStorage === 'undefined' || !localStorage) return;
+        try { localStorage.setItem(CUSTOM_KEY, s); } catch (e) {}
+    }
 
     /* ---------------- 会话（状态机） ---------------- */
 
@@ -396,6 +427,94 @@
             all.wrongbook = [];
             this._save(all);
         },
+
+        /* --- 限时挑战 ---
+         * 等级 → 秒数。考验模式识别速度（VCF-REDESIGN §7）。
+         * App 层按 p.level 查表起倒计时，超时判负并记入错题本。 */
+        TIME_LIMIT: { 1: 45, 2: 75, 3: 120 },
+
+        /* --- 自定义题库（PRD Q3）---
+         * 摆题 → 引擎校验「黑方真有连冲解」→ 入库。判定与内置题同一套状态机，
+         * 不存标准答案，只存初始盘面。 */
+        /** 15×15 二维盘面 → 扁平字符串（存档格式与内置题一致） */
+        flattenBoard(board2d) {
+            let s = '';
+            for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) s += (board2d[y][x] || 0);
+            return s;
+        },
+        /**
+         * 校验并保存自定义题。
+         * @returns {{ok:true, puzzle, index}|{ok:false, error:string}}
+         */
+        addCustom(board2d) {
+            const C = GMK.C, Kill = GMK.Kill;
+            if (!Array.isArray(board2d) || board2d.length !== SIZE ||
+                board2d.some((r) => !Array.isArray(r) || r.length !== SIZE)) {
+                return { ok: false, error: '棋盘数据无效' };
+            }
+            let blacks = 0, whites = 0;
+            const b = new GMK.Board();
+            for (let y = 0; y < SIZE; y++) {
+                for (let x = 0; x < SIZE; x++) {
+                    const v = board2d[y][x];
+                    if (v !== 1 && v !== 2) continue;
+                    const i = C.idx(x, y);
+                    if (b.cells[i] !== C.EMPTY) return { ok: false, error: '棋盘数据重复' };
+                    b.place(i, v);
+                    if (v === 1) blacks++; else whites++;
+                }
+            }
+            if (blacks === 0) return { ok: false, error: '至少要摆一颗黑子（黑方先行）' };
+            if (blacks < whites) return { ok: false, error: '黑方先行：黑子数不能少于白子数' };
+
+            // 盘面上不能已有五连（否则不是「解题」而是「看答案」）
+            for (let i = 0; i < C.CELLS; i++) {
+                if (b.cells[i] !== C.EMPTY && b.isFive(i)) {
+                    return { ok: false, error: '盘面上已经有五连，请先拿掉' };
+                }
+            }
+            // 黑方必须真有连冲解 —— 与内置题同一判定
+            if (Kill.vcf(b, C.BLACK, 12) < 0) {
+                return { ok: false, error: '这个局面黑方没有连冲解，加/挪几颗黑子试试' };
+            }
+            // 实际解的深度（强制线的黑方手数），难度按深度分档 —— 与内置题同规则
+            const s = new VcfSession({ board: board2d, depth: 0, level: 1, title: '', lesson: '', sideToMove: 1 });
+            const line = s.solution();
+            const depth = line.length;
+            if (depth < 1) return { ok: false, error: '无法导出连冲解，请调整盘面' };
+            const level = depth >= 4 ? 3 : (depth >= 3 ? 2 : 1);
+
+            const puzzle = {
+                id: 'custom-' + Date.now().toString(36),
+                level: level,
+                levelName: ['', '入门', '进阶', '高阶'][level],
+                depth: depth,
+                title: '自定义 · ' + depth + ' 手',
+                lesson: '自定义题目：黑方连冲取胜。',
+                board: board2d.map((r) => r.slice()),
+                sideToMove: 1,
+                custom: true
+            };
+            const customs = loadCustoms();
+            customs.push({ id: puzzle.id, level: puzzle.level, depth: puzzle.depth, title: puzzle.title, board: this.flattenBoard(board2d) });
+            saveCustoms(customs);
+            PUZZLES.push(puzzle);
+            return { ok: true, puzzle: puzzle, index: PUZZLES.length - 1 };
+        },
+        /** 删除自定义题（内置题不可删） */
+        removeCustom(id) {
+            const idx = PUZZLES.findIndex(function (p) { return p.id === id && p.custom; });
+            if (idx < 0) return false;
+            PUZZLES.splice(idx, 1);
+            saveCustoms(loadCustoms().filter(function (p) { return p.id !== id; }));
+            // 成绩/错题里的残留条目引用已删的题，一并清掉
+            const all = this._load();
+            delete all[id];
+            if (Array.isArray(all.wrongbook)) all.wrongbook = all.wrongbook.filter(function (w) { return w.puzzle !== id; });
+            this._save(all);
+            return true;
+        },
+        customCount() { return loadCustoms().length; },
 
         /* --- 兼容旧接口（E2E/旧脚本仍引用） --- */
         current: null,

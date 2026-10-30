@@ -19,6 +19,8 @@ async function run(t, { page }) {
     // Service Worker：必须真正激活。
     // 旧断言只看「注册状态可读」—— install 时 cache.addAll 因缺文件被整体拒绝、
     // SW 根本没装上，这里也照样通过，离线缓存形同虚设（v2.0 教训）。
+    // 轮询窗口 20s：14 个套件连跑时机器负载高，install（27 个文件 addAll）
+    // 偶发超过 8s —— 之前在这里随机翻车过，别把环境抖动当产品 bug。
     const swApi = await page.evaluate(() => !!navigator.serviceWorker);
     t.eq(swApi, true, 'navigator.serviceWorker 可用');
     const swActive = await page.evaluate(() => new Promise((resolve) => {
@@ -26,7 +28,7 @@ async function run(t, { page }) {
         const poll = () => {
             navigator.serviceWorker.getRegistration().then((r) => {
                 if (r && r.active) return resolve(true);
-                if (Date.now() - started > 8000) return resolve(false);
+                if (Date.now() - started > 20000) return resolve(false);
                 setTimeout(poll, 200);
             }).catch(() => resolve(false));
         };
@@ -34,28 +36,37 @@ async function run(t, { page }) {
     }));
     t.ok(swActive, 'SW 已激活（active）');
 
-    // 离线缓存完整性：当前版本缓存名存在，且 sw.js PRECACHE 清单逐项命中
+    // 离线缓存完整性：当前版本缓存名存在，且 sw.js PRECACHE 清单逐项命中。
+    // install 完成前缓存可能不全，同样给 15s 重试窗口。
     const cacheInfo = await page.evaluate(async () => {
-        try {
-            const manifest = await fetch('manifest.webmanifest').then(r => r.json());
-            const want = 'gomoku-shell-v' + manifest.version;
-            const keys = await caches.keys();
-            if (!keys.includes(want)) {
-                return { ok: false, detail: '缓存 ' + want + ' 不存在，现有：' + keys.join(',') };
+        const deadline = Date.now() + 15000;
+        let last = { ok: false, detail: '未执行' };
+        while (Date.now() < deadline) {
+            try {
+                const manifest = await fetch('manifest.webmanifest').then(r => r.json());
+                const want = 'gomoku-shell-v' + manifest.version;
+                const keys = await caches.keys();
+                if (!keys.includes(want)) {
+                    last = { ok: false, detail: '缓存 ' + want + ' 不存在，现有：' + keys.join(',') };
+                } else {
+                    const cache = await caches.open(want);
+                    const swSrc = await fetch('sw.js').then(r => r.text());
+                    const m = /PRECACHE\s*=\s*\[([\s\S]*?)\]/.exec(swSrc);
+                    if (!m) { last = { ok: false, detail: 'sw.js 未找到 PRECACHE' }; break; }
+                    const files = [...m[1].matchAll(/'([^']+)'/g)].map(x => x[1]);
+                    const missing = [];
+                    for (const f of files) {
+                        if (!(await cache.match(f))) missing.push(f);
+                    }
+                    last = { ok: missing.length === 0, detail: missing.length ? '缓存缺 ' + missing.join(', ') : files.length + ' 项全部命中' };
+                    if (last.ok) return last;
+                }
+            } catch (e) {
+                last = { ok: false, detail: String(e && e.message || e) };
             }
-            const cache = await caches.open(want);
-            const swSrc = await fetch('sw.js').then(r => r.text());
-            const m = /PRECACHE\s*=\s*\[([\s\S]*?)\]/.exec(swSrc);
-            if (!m) return { ok: false, detail: 'sw.js 未找到 PRECACHE' };
-            const files = [...m[1].matchAll(/'([^']+)'/g)].map(x => x[1]);
-            const missing = [];
-            for (const f of files) {
-                if (!(await cache.match(f))) missing.push(f);
-            }
-            return { ok: missing.length === 0, detail: missing.length ? '缓存缺 ' + missing.join(', ') : files.length + ' 项全部命中' };
-        } catch (e) {
-            return { ok: false, detail: String(e && e.message || e) };
+            await new Promise((r) => setTimeout(r, 300));
         }
+        return last;
     });
     t.ok(cacheInfo.ok, 'SW 缓存覆盖全部 PRECACHE', cacheInfo.detail);
 

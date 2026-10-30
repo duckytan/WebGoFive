@@ -51,6 +51,10 @@
             this.vcfPuzzle = null;     // 当前 VCF 题
             this.vcf = null;           // 当前 VCF 会话（状态机）
             this._vcfTimer = 0;        // 看答案的演示定时器
+            this.vcfEdit = false;      // 摆题模式：棋盘点击变为摆放黑白子
+            this._vcfDeadline = 0;     // 限时挑战的截止时间戳（0 = 未限时）
+            this._vcfTick = 0;         // 限时倒计时 interval id
+            this._vcfExpired = false;  // 限时已超时（拒收后续落子直到换题）
             this.confirmMove = false;  // 落子需二次确认（防误触）
             this.soundOn = true;       // 落子音效
             this._pending = null;      // 待确认的落子
@@ -467,28 +471,11 @@
                 this._refreshAIOverlays();
             });
 
-            // VCF 连冲练习：按难度分组的下拉 + 开始 / 提示 / 悔一步 / 重来 / 看答案
+            // VCF 连冲练习：按难度分组的下拉（内置题 + 自定义题）+ 开始 / 提示 / 悔一步 / 重来 / 看答案
             const V = GMK.VCFPractice;
             const sel = this._$('vcf-puzzle-select');
             if (sel && V && Array.isArray(V.PUZZLES)) {
-                for (let lv = 0; lv < V.LEVELS.length; lv++) {
-                    const level = V.LEVELS[lv];
-                    const group = document.createElement('optgroup');
-                    group.label = level.name;
-                    let n = 0;
-                    for (let i = 0; i < V.PUZZLES.length; i++) {
-                        const p = V.PUZZLES[i];
-                        if (p.level !== level.id) continue;
-                        const opt = document.createElement('option');
-                        opt.value = String(i);
-                        opt.textContent = p.title + ' · ' + p.depth + ' 手';
-                        group.appendChild(opt);
-                        n++;
-                    }
-                    if (n) sel.appendChild(group);
-                }
-                this._vcfUpdate();
-                this._vcfDailyRefresh();
+                this._vcfPopulateSelect();
             }
             const bindVcf = (id, fn) => {
                 const el = this._$(id);
@@ -501,6 +488,10 @@
             bindVcf('btn-vcf-restart', this._vcfRestart);
             bindVcf('btn-vcf-solution', this._vcfSolution);
             bindVcf('btn-vcf-wrongbook', this._toggleWrongbook);
+            bindVcf('btn-vcf-edit', this._vcfEditStart);
+            bindVcf('btn-vcf-cancel', this._vcfEditCancel);
+            bindVcf('btn-vcf-save', this._vcfEditSave);
+            bindVcf('btn-vcf-del', this._vcfDeleteCustom);
 
             // 每步落子后：填 #ai-best-move + 威胁扫描 + 优势条（P0/P1）
             this.game.on('move', () => this._onMoveAfterHook());
@@ -754,7 +745,145 @@
             this._updatePanelVisibility();
             this._vcfUpdate();
             this._vcfDailyRefresh();
+            this._vcfTimedArm(p);
+            const delBtn = this._$('btn-vcf-del');
+            if (delBtn) delBtn.style.display = p.custom ? '' : 'none';
             this._hint((isDaily ? '📅 每日一题：' : 'VCF 连冲：') + p.title + ' —— ' + p.lesson);
+        }
+
+        /* ---------------- 题库下拉 / 摆题 / 限时 ---------------- */
+
+        /** 重建题目下拉：内置题按等级分组，自定义题单独一组。必须与 PUZZLES 同长 */
+        _vcfPopulateSelect() {
+            const V = GMK.VCFPractice;
+            const sel = this._$('vcf-puzzle-select');
+            if (!sel || !V || !Array.isArray(V.PUZZLES)) return;
+            sel.textContent = '';
+            const groups = {};
+            for (let i = 0; i < V.PUZZLES.length; i++) {
+                const p = V.PUZZLES[i];
+                const key = p.custom ? '自定义' : (p.levelName || '入门');
+                if (!groups[key]) {
+                    groups[key] = document.createElement('optgroup');
+                    groups[key].label = key;
+                    sel.appendChild(groups[key]);
+                }
+                const opt = document.createElement('option');
+                opt.value = String(i);
+                opt.textContent = p.title + ' · ' + p.depth + ' 手';
+                groups[key].appendChild(opt);
+            }
+            this._vcfUpdate();
+            this._vcfDailyRefresh();
+        }
+
+        /** 进入摆题：清空棋盘，棋盘点击改为摆放（黑→白→清除循环） */
+        _vcfEditStart() {
+            if (this.vcfEdit) return;
+            this.vcfEdit = true;
+            this._vcfTimedStop();
+            this.vcf = null;
+            this.vcfPuzzle = null;
+            this.game.loadCustomState({
+                board: Array.from({ length: 15 }, () => new Array(15).fill(0)),
+                currentPlayer: 1, gameStatus: 'playing', moves: []
+            });
+            this.renderer.setWinLine(null);
+            this.renderer.clearHint();
+            this._render();
+            this._show('vcf-edit-actions', true);
+            this._vcfUpdate('摆题中：点击棋盘放子（黑→白→清除）。保存时引擎校验黑方确有连冲解。', '');
+        }
+
+        _vcfEditCancel() {
+            if (!this.vcfEdit) return;
+            this.vcfEdit = false;
+            this._show('vcf-edit-actions', false);
+            // 退出到「未开始」状态，棋盘清空
+            this.game.loadCustomState({
+                board: Array.from({ length: 15 }, () => new Array(15).fill(0)),
+                currentPlayer: 1, gameStatus: 'playing', moves: []
+            });
+            this._render();
+            this._vcfUpdate('已取消摆题。', '');
+        }
+
+        _vcfEditSave() {
+            if (!this.vcfEdit) return;
+            const V = GMK.VCFPractice;
+            const r = V.addCustom(this.game.getBoardState());
+            if (!r.ok) { this._vcfUpdate('保存失败：' + r.error, 'bad'); return; }
+            this.vcfEdit = false;
+            this._show('vcf-edit-actions', false);
+            this._vcfPopulateSelect();
+            const sel = this._$('vcf-puzzle-select');
+            if (sel) sel.value = String(r.index);
+            this._startVcfAt(r.index, false);
+            this._hint('自定义题已入库：' + r.puzzle.title);
+        }
+
+        _vcfDeleteCustom() {
+            const V = GMK.VCFPractice;
+            const p = this.vcfPuzzle;
+            if (!V || !p || !p.custom) return;
+            if (!V.removeCustom(p.id)) return;
+            this.vcf = null;
+            this.vcfPuzzle = null;
+            this._vcfTimedStop();
+            this._vcfPopulateSelect();
+            this.game.loadCustomState({
+                board: Array.from({ length: 15 }, () => new Array(15).fill(0)),
+                currentPlayer: 1, gameStatus: 'playing', moves: []
+            });
+            this._render();
+            this._vcfUpdate('已删除自定义题。', '');
+        }
+
+        /** 按等级武装限时倒计时（未勾「限时」或表缺失则不启用） */
+        _vcfTimedArm(p) {
+            this._vcfTimedStop();
+            this._vcfExpired = false;   // 换题即解除上一题的超时封锁（与是否限时无关）
+            const box = this._$('chk-vcf-timed');
+            const limit = (GMK.VCFPractice.TIME_LIMIT && GMK.VCFPractice.TIME_LIMIT[p.level]) || 0;
+            if (!box || !box.checked || !limit) { this._show('vcf-timer', false); return; }
+            this._vcfDeadline = Date.now() + limit * 1000;
+            this._vcfExpired = false;
+            this._show('vcf-timer', true);
+            this._vcfTimedTick();
+            this._vcfTick = setInterval(() => this._vcfTimedTick(), 250);
+        }
+
+        _vcfTimedStop() {
+            if (this._vcfTick) { clearInterval(this._vcfTick); this._vcfTick = 0; }
+            this._vcfDeadline = 0;
+            const el = this._$('vcf-timer');
+            if (el) el.style.display = 'none';
+        }
+
+        _vcfTimedTick() {
+            // 自守卫：离开练习/换模式后倒计时自动退役，不残留 interval
+            if (!this.vcfPuzzle || this.game.gameMode !== 'VCF_PRACTICE') { this._vcfTimedStop(); return; }
+            const remain = this._vcfDeadline - Date.now();
+            const el = this._$('vcf-timer');
+            if (remain <= 0) {
+                this._vcfTimeUp();
+                return;
+            }
+            if (el) {
+                const s = Math.ceil(remain / 1000);
+                el.textContent = '⏱ ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+                el.style.color = s <= 10 ? '#e0533d' : '';
+            }
+        }
+
+        _vcfTimeUp() {
+            this._vcfTimedStop();
+            this._vcfExpired = true;
+            if (this.vcfPuzzle && GMK.VCFPractice.wrongbookAdd) {
+                GMK.VCFPractice.wrongbookAdd(this.vcfPuzzle.id, null, 'timeout');
+            }
+            this._vcfUpdate('⏱ 时间到 —— 换题重来，或关掉「限时」再试。', 'bad');
+            this._hint('限时挑战超时');
         }
 
         /** 把会话棋盘同步到真实 game 上（渲染 / 最后一手标记的唯一入口） */
@@ -793,6 +922,8 @@
                 set('vcf-depth', '目标 — 手');
                 set('vcf-steps', '已走 0 手');
                 if (fill) fill.style.width = '0%';
+                const delBtn = this._$('btn-vcf-del');
+                if (delBtn) delBtn.style.display = 'none';
                 if (msgEl) { msgEl.textContent = msg || '选一道题开始。'; msgEl.className = 'vcf-msg'; }
                 return;
             }
@@ -812,6 +943,7 @@
                     msgEl.textContent = msg;
                     msgEl.className = 'vcf-msg' + (kind ? ' is-' + kind : '');
                 } else if (s.state === 'solved') {
+                    this._vcfTimedStop();
                     const ms = s.elapsed;
                     // 只在首次通关时写记录，避免每次刷新面板都累加 times
                     if (!s._recorded) {
@@ -838,6 +970,7 @@
         _vcfPlay(x, y) {
             const s = this.vcf;
             if (!s || s.state !== 'playing') { this._hint('先点「开始」载入一道题'); return; }
+            if (this._vcfExpired) { this._hint('⏱ 时间到 —— 重来或关掉限时再试'); return; }
             const r = s.play(x, y);
 
             if (r.code === 'NOT_FOUR') {
@@ -1108,6 +1241,14 @@
 
         _onPlayerClick(x, y) {
             if (this.reviewing) { this._hint('复盘模式：点「退出」回到对局'); return; }
+            // 摆题模式：棋盘点击 = 摆放（空→黑→白→清除），不走路子逻辑
+            if (this.vcfEdit) {
+                const board = this.game.getBoardState();
+                board[y][x] = board[y][x] === 0 ? 1 : (board[y][x] === 1 ? 2 : 0);
+                this.game.loadCustomState({ board: board, currentPlayer: 1, gameStatus: 'playing', moves: [] });
+                this._render();
+                return;
+            }
             if (this.game.gameStatus === 'finished') return;
             if (this.game.gameMode === 'EvE') { this._hint('机机对战模式，玩家无法操作棋盘'); return; }
             if (this.game.gameMode === 'VCF_PRACTICE') { this._vcfPlay(x, y); return; }

@@ -84,7 +84,7 @@
 </div>
 
 <header class="app-header">
-    <h1 class="app-title">WebGoFive <span class="app-sub">H5 五子棋</span><span id="app-version" class="app-version" title="当前版本">v2.5.0</span></h1>
+    <h1 class="app-title">WebGoFive <span class="app-sub">H5 五子棋</span><span id="app-version" class="app-version" title="当前版本">v2.6.0</span></h1>
     <div class="header-actions">
         <button id="replay-btn" class="btn ghost" type="button" title="回放本局">回放</button>
         <button id="new-game-btn" class="btn primary" type="button">新游戏</button>
@@ -182,12 +182,18 @@
                     <button id="btn-vcf-daily" class="btn sm" type="button"
                             title="按日期从题库确定性选题，通关累积连胜">📅 每日一题</button>
                     <span id="vcf-daily-info" class="vcf-daily-info">连胜 0</span>
+                    <label class="vcf-timed-label" title="开启后按等级限时：入门45s/进阶75s/高阶120s，超时判负">
+                        <input type="checkbox" id="chk-vcf-timed"> ⏱ 限时
+                    </label>
+                    <button id="btn-vcf-edit" class="btn sm" type="button"
+                            title="自己摆一个局面，引擎校验黑方确有连冲解后入库">🎨 摆题</button>
                 </div>
 
                 <div class="vcf-chips">
                     <span class="vcf-chip" id="vcf-level">未开始</span>
                     <span class="vcf-chip" id="vcf-depth">目标 — 手</span>
                     <span class="vcf-chip" id="vcf-steps">已走 0 手</span>
+                    <span class="vcf-chip" id="vcf-timer" style="display:none">⏱ —</span>
                 </div>
 
                 <div class="vcf-bar" role="progressbar" aria-label="连冲进度">
@@ -203,6 +209,15 @@
                     <button id="btn-vcf-solution" class="btn sm ghost" type="button">看答案</button>
                     <button id="btn-vcf-wrongbook" class="btn sm ghost" type="button"
                             title="走错的题都记在这里，点条目直接重练">错题本</button>
+                    <button id="btn-vcf-del" class="btn sm ghost" type="button" style="display:none"
+                            title="删除这道自定义题">删此题</button>
+                </div>
+
+                <!-- 摆题模式操作行（点「摆题」展开；规则说明由 App 写入） -->
+                <div class="btn-row vcf-actions" id="vcf-edit-actions" style="display:none">
+                    <span class="vcf-wb-empty" id="vcf-edit-tip">摆题：空点→黑子→白子→清除。保存时引擎校验黑方确有连冲解。</span>
+                    <button id="btn-vcf-save" class="btn sm primary" type="button">保存</button>
+                    <button id="btn-vcf-cancel" class="btn sm" type="button">取消</button>
                 </div>
 
                 <!-- 错题本列表（点「错题本」展开；空态由 App 写入文案） -->
