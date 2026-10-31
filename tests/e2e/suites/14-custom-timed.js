@@ -97,6 +97,8 @@ module.exports = {
         t.ok(/保存失败/.test(rejected), '非法盘面保存被拒', rejected);
 
         // 载入内置两手题的盘面 → 保存通过 → 下拉出现自定义组并自动选中
+        // 题库总数动态取值（VCT 加入后是 15，别再硬编码 9）
+        const baseCount = await page.evaluate(() => window.GMK.VCFPractice.PUZZLES.length);
         const saved = await page.evaluate(() => {
             const V = window.GMK.VCFPractice;
             window.game.loadCustomState({ board: V.PUZZLES[1].board.map((r) => r.slice()), currentPlayer: 1, gameStatus: 'playing', moves: [] });
@@ -133,7 +135,7 @@ module.exports = {
             customs: window.GMK.VCFPractice.customCount(),
             delVisible: document.getElementById('btn-vcf-del').style.display !== 'none'
         }));
-        t.eq(deleted.count, 9, '删除后题库复原为 9 道', String(deleted.count));
+        t.eq(deleted.count, baseCount, '删除后题库复原', String(deleted.count));
         t.eq(deleted.customs, 0, '存档中自定义题清空');
         t.eq(deleted.delVisible, false, '删除后「删此题」隐藏');
     }

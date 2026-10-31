@@ -22,6 +22,8 @@ require(path.join(ENGINE, 'evaluator.js'));
 require(path.join(ENGINE, 'search.js'));
 const Kill = require(path.join(ENGINE, 'kill.js'));
 const VCF = require(path.join(ROOT, 'js', 'app', 'vcf.js'));
+require(path.join(ENGINE, 'tss.js'));
+const TSS = globalThis.GMK.TSS;
 
 const C = globalThis.GMK.C;
 const { BLACK, WHITE, EMPTY } = C;
@@ -61,14 +63,45 @@ for (let k = 0; k < VCF.PUZZLES.length; k++) {
         if (pz.board[y][x] === BLACK) blacks++;
         if (pz.board[y][x] === WHITE) whites++;
     }
-    ok(blacks >= 4 && whites >= 3, tag + ' 子力合理', '黑' + blacks + ' 白' + whites);
+    if (pz.type === 'vct') {
+        ok(blacks >= 3 && blacks >= whites, tag + ' 子力合理(VCT)', '黑' + blacks + ' 白' + whites);
+    } else {
+        ok(blacks >= 4 && whites >= 3, tag + ' 子力合理', '黑' + blacks + ' 白' + whites);
+    }
 
     // ② 开局不能已经是五连
     let hasFive = false;
     for (let i = 0; i < C.CELLS; i++) if (eng.isFive(i)) { hasFive = true; break; }
     ok(!hasFive, tag + ' 题面不存在既成五连');
 
-    // ③ 必须真的有连冲解
+    if (pz.type === 'vct') {
+        // VCT：必须是「纯 VCT」—— VCF 解不出、TSS 解得出、首着是活三、深度一致
+        const first = Kill.vcf(eng, BLACK, 14);
+        eq(first < 0, true, tag + ' 是纯 VCT（VCF 解不出）', 'Kill.vcf=' + first);
+        const r = TSS.solve(eng, BLACK, { maxDepth: 8, nodeBudget: 200000 });
+        ok(!!r, tag + ' TSS 存在必胜解');
+        if (r) {
+            const shapeBuf = new Int8Array(4);
+            TSS.threatMoves;   // 引用保持
+            GMK.Evaluator.pointShapes(eng, r.move, BLACK, shapeBuf);
+            let three = false;
+            for (let d = 0; d < 4; d++) if (shapeBuf[d] === C.SHAPE.OPEN_THREE) three = true;
+            ok(three, tag + ' 首着是活三（VCT 本体）');
+        }
+        eq(VCF.solutionOf(k).length, pz.depth, tag + ' 参考线深度与标注一致');
+        // 照提示走线必须通关
+        const sess = VCF.create(k);
+        let guard = 0;
+        while (guard++ < 10 && sess.state === 'playing') {
+            const h = sess.hint();
+            if (!h) break;
+            sess.play(h.x, h.y);
+        }
+        eq(sess.state, 'solved', tag + ' 照提示可通关');
+        continue;
+    }
+
+    // ③ 必须真的有连冲解（VCF 题）
     const first = Kill.vcf(eng, BLACK, 14);
     ok(first >= 0, tag + ' 存在连冲必胜解', 'Kill.vcf=' + first);
     if (first < 0) continue;
@@ -161,7 +194,7 @@ console.log('─'.repeat(52));
             const h = s.hint();
             if (!h) break;
             const r = s.play(h.x, h.y);
-            if (r.code !== 'FOUR' && r.code !== 'WIN' && r.code !== 'DOUBLE') break;
+            if (r.code !== 'FOUR' && r.code !== 'THREE' && r.code !== 'WIN' && r.code !== 'DOUBLE') break;
         }
         if (s.state !== 'solved') { allSolved = false; badId = VCF.PUZZLES[k].id; break; }
     }

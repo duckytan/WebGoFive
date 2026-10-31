@@ -1,14 +1,24 @@
 # WebGoFive-H5-v2 交付进度
 
 > 独立新项目，不复用 WebGoFive-H5-Qoder 旧代码。引擎复用 v1.4.0（171 测试背书），UI/核心/渲染器全部重写。
-> 最后更新：2026-10-29 —— **v2.6.0（自定义题库 + 限时挑战）开发完成，验收全绿，待用户确认发布**。
+> 最后更新：2026-10-29 —— **v2.7.0（VCT 威胁空间搜索 + 题型）开发完成，验收全绿，待用户确认发布**。
 
 ## 结论：✅ 开发完成，验收 PASS
 
-- 单元测试 **381/381**（10 套件：…… + daily-wrongbook 32 + custom-timed 33）
-- E2E（真实 Edge）**221/221，14 套件**（v2.6.0 新增 14-custom-timed 23 项；08-pwa 抗负载加固）
-- 资源完整性（含 sw.js PRECACHE 清单）+ 版本一致性（2.6.0 四处源）通过
+- 单元测试 **459/459**（11 套件：engine 39 + forbidden 45 + vcf 28 + vcf-practice 110 + search 36 + loadorder 22 + tunable 48 + replay 30 + daily-wrongbook 32 + custom-timed 33 + tss 30）
+- E2E（真实 Edge）**231/231，15 套件**（v2.7.0 新增 15-vct 10 项）
+- 资源完整性（含 sw.js PRECACHE 清单）+ 版本一致性（2.7.0 四处源）通过
 - 总判定 **PASS**，`reports/acceptance.json`，变更明细见 `CHANGELOG.md`
+
+## v2.7.0（10-29）：VCT 威胁空间搜索（规划池最后一项）
+
+新增 `js/engine/tss.js`（既有引擎文件仍零 diff）：有界 VCT 求解器 ——
+攻方候选四∪活三，活三 AND 节点逐一验证防守应手集（与子相邻的空点），
+深度+节点双保险，预算耗尽不误判、棋盘按 history 基准回滚。
+`tools/gen-vct.js` 反向生成 6 道纯 VCT 题（VCF 解不出+TSS 解出+首着活三），
+**抓到生成器真 bug：走线不撤销污染快照，存成残局** —— 先快照后走线修复。
+会话/连胜/错题本/每日一题对 VCT 全生效；下拉按「VCT·等级」分组。
+契约文档新增 §7。测试：tss 30 项 + vcf-practice 110 项 + E2E 15 号套件 10 项。
 
 ## v2.6.0（10-29）：自定义题库 + 限时挑战
 

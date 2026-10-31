@@ -25,7 +25,7 @@ console.log('\n=== 验收闸门 · ' + new Date().toISOString() + ' ===\n');
 
 // 1. 单元测试（引擎/装配/P2 逻辑 + v2.5 每日一题与错题本）
 console.log('— 单元测试（引擎 + 装配 + P2）—');
-const unitSets = ['engine', 'forbidden', 'vcf', 'vcf-practice', 'search', 'loadorder', 'tunable', 'replay', 'daily-wrongbook', 'custom-timed'];
+const unitSets = ['engine', 'forbidden', 'vcf', 'vcf-practice', 'search', 'loadorder', 'tunable', 'replay', 'daily-wrongbook', 'custom-timed', 'tss'];
 let unitAssertions = 0;
 for (const s of unitSets) {
     const out = execSync('node ' + path.join(ROOT, 'tests', 'engine', s + '.test.js'), { encoding: 'utf8', cwd: ROOT });
@@ -55,7 +55,7 @@ console.log('— 资源完整性 —');
 const needFiles = [
     'index.html', 'sw.js', 'manifest.webmanifest',
     'js/engine/constants.js', 'js/engine/board.js', 'js/engine/evaluator.js',
-    'js/engine/search.js', 'js/engine/kill.js', 'js/engine/forbidden.js', 'js/engine/gomoku-ai.js',
+    'js/engine/search.js', 'js/engine/kill.js', 'js/engine/tss.js', 'js/engine/forbidden.js', 'js/engine/gomoku-ai.js',
     'js/core/game.js', 'js/renderer/board.js', 'js/ui/app.js',
     'js/app/save-load.js', 'js/app/replay.js', 'js/app/vcf.js', 'js/app/analysis.js', 'js/app/tunable-ai.js',
     'css/style.css', 'css/themes.css', 'css/animations.css',

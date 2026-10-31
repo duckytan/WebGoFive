@@ -13,6 +13,7 @@ GMK = {
   Board,             // board.js —— 一维棋盘 + 棋型统计
   Evaluator,         // evaluator.js —— 静态评估
   Kill,              // kill.js —— VCF 算杀
+  TSS,               // tss.js —— VCT 威胁空间搜索（v2.7.0 新增，见 §7）
   Forbidden,         // forbidden.js —— RIF 禁手
   Search,            // search.js —— PVS + TT
   EngineAI,          // gomoku-ai.js —— AI 门面（实现 GomokuAI）
@@ -160,3 +161,26 @@ opts.threat = {x, y}   // 威胁点（对手一步成五处）：红色描边圈
 | 换界面（如改 Vue/React） | `js/ui/`、`index.html`、`css/` | `js/engine/*`、`js/core/*`、`js/app/*` |
 | 换 AI（如换开源引擎） | 新写一个类实现 `GomokuAI`，`game.setAI(new X(game))` | 引擎原文件、核心、UI |
 | 换棋盘规格（19×19） | `js/engine/constants.js` 的 `SIZE` + 渲染器 `boardSize` | 核心逻辑、UI 事件 |
+
+## 7. TSS（VCT 威胁空间搜索，v2.7.0）
+
+新增文件 `js/engine/tss.js`（不改任何既有引擎文件）。受限口径（练习模式语义，
+与 js/app/vcf.js 的 VCT 判定共享）：
+
+```
+GMK.TSS = {
+  solve(board, player, opts)   // → {move, depth, nodes} | null
+                               // opts {maxDepth=6, nodeBudget=60000}
+                               // null = 预算内未证明（≠必不胜），绝不误判
+  threatMoves(board, p, limit) // 威胁着法：成四 ∪ 成活三，四优先、确定性排序
+  defenderMoves(board)         // 防守应手集：与任意棋子相邻的空点（完备性见源码注释）
+  bestDefense(board, p)        // 防方最强应手（确定性）：挡五 > 反冲四 > 挡三 > 近域
+  DEFENDER_RADIUS              // 应手集半径基准（与棋子相邻）
+}
+```
+
+- 首着为活三才算 VCT（纯 VCT = `Kill.vcf` 解不出且 `TSS.solve` 解出）；
+- 安全性：深度上限 + 节点预算双保险，预算走异常跳出，`finally` 按历史基准回滚棋盘，
+  调用方的盘面绝不留幽灵棋子（v1 超时污染教训的同源修法）；
+- 题库由 `tools/gen-vct.js` 生成（VCF 解不出 → TSS 解出 → 首着活三 → 克隆盘走线验证），
+  逐题由 `tests/engine/vcf-practice.test.js` 复验。

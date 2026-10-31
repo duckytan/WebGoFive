@@ -84,7 +84,7 @@
 </div>
 
 <header class="app-header">
-    <h1 class="app-title">WebGoFive <span class="app-sub">H5 五子棋</span><span id="app-version" class="app-version" title="当前版本">v2.6.0</span></h1>
+    <h1 class="app-title">WebGoFive <span class="app-sub">H5 五子棋</span><span id="app-version" class="app-version" title="当前版本">v2.7.0</span></h1>
     <div class="header-actions">
         <button id="replay-btn" class="btn ghost" type="button" title="回放本局">回放</button>
         <button id="new-game-btn" class="btn primary" type="button">新游戏</button>
@@ -169,8 +169,9 @@
                 <legend>VCF 连冲练习 <span class="vcf-count" id="vcf-count">0/0</span></legend>
 
                 <p class="vcf-intro">
-                    每一手都必须是<b>四</b> —— 对方只有一个点能挡，只能跟着你走。
-                    把这样的绝对先手串起来，就是 VCF。
+                    每一手都必须是<b>威胁</b>：VCF 题里是<b>四</b>（对方只有一个点能挡），
+                    VCT 题里<b>活三</b>也算（对方应慢一步就转四）。
+                    把绝对先手串起来，就是连杀。
                 </p>
 
                 <div class="vcf-row">
@@ -361,6 +362,7 @@
 <script src="js/engine/evaluator.js"></script>
 <script src="js/engine/search.js"></script>
 <script src="js/engine/kill.js"></script>
+<script src="js/engine/tss.js"></script>
 <script src="js/engine/forbidden.js"></script>
 <script src="js/engine/gomoku-ai.js"></script>
 <!-- 核心 / 渲染器 / 功能 / UI -->

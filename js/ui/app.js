@@ -762,7 +762,8 @@
             const groups = {};
             for (let i = 0; i < V.PUZZLES.length; i++) {
                 const p = V.PUZZLES[i];
-                const key = p.custom ? '自定义' : (p.levelName || '入门');
+                const key = p.custom ? '自定义'
+                    : (p.type === 'vct' ? 'VCT·' + (p.levelName || '入门') : (p.levelName || '入门'));
                 if (!groups[key]) {
                     groups[key] = document.createElement('optgroup');
                     groups[key].label = key;
@@ -974,16 +975,27 @@
             const r = s.play(x, y);
 
             if (r.code === 'NOT_FOUR') {
+                // 非威胁着法不论题型都记入错题本（v2.6.0 契约）
                 if (GMK.VCFPractice.wrongbookAdd) GMK.VCFPractice.wrongbookAdd(this.vcfPuzzle.id, { x: x, y: y }, 'not-four');
-                this._vcfUpdate('这一手不是冲四 —— 对方不必应，攻击链就断了。想想哪里能形成四。', 'bad');
-                this._hint('不是冲四：对方没有必须应的一手');
+                const isVct = this.vcfPuzzle && this.vcfPuzzle.type === 'vct';
+                this._vcfUpdate(isVct
+                    ? '这一手既不是四也不是活三 —— 对方不必应，威胁就断了。'
+                    : '这一手不是冲四 —— 对方不必应，攻击链就断了。想想哪里能形成四。', 'bad');
+                this._hint(isVct ? '不是威胁：要冲四或活三' : '不是冲四：对方没有必须应的一手');
                 return;
             }
             if (r.code === 'OCCUPIED') { this._hint('这里已经有子了'); return; }
 
             this._vcfSync();
 
-            if (r.code === 'FOUR') {
+            if (r.code === 'THREE') {
+                if (r.dead) {
+                    this._vcfUpdate('对方应手之后，威胁链断了 —— 活三也要算好后续。', 'bad');
+                } else {
+                    const nm3 = GMK.VCFPractice.name(r.reply);
+                    this._vcfUpdate('活三施压，对方应 ' + nm3 + '。继续构造威胁。', 'ok');
+                }
+            } else if (r.code === 'FOUR') {
                 if (r.dead) {
                     if (GMK.VCFPractice.wrongbookAdd) GMK.VCFPractice.wrongbookAdd(this.vcfPuzzle.id, { x: x, y: y }, 'dead');
                     this._vcfUpdate('对方应手之后，你已无冲四可走 —— 这条线不成立。', 'bad');

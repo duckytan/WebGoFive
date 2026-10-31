@@ -11,7 +11,7 @@
  */
 'use strict';
 
-const VERSION = '2.6.0';
+const VERSION = '2.7.0';
 const CACHE_NAME = 'gomoku-shell-v' + VERSION;
 
 // 必须与 index.html 实际加载的资源一致：
@@ -29,6 +29,7 @@ const PRECACHE = [
     './js/engine/evaluator.js',
     './js/engine/search.js',
     './js/engine/kill.js',
+    './js/engine/tss.js',
     './js/engine/forbidden.js',
     './js/engine/gomoku-ai.js',
     './js/core/game.js',

@@ -33,6 +33,7 @@
     const SIZE = 15;
     const STORE_KEY = 'gmk_vcf_v2';
     const CUSTOM_KEY = 'gmk_vcf_custom_v1';   // 自定义题独立存档：「清空进度」不应误删用户摆的题
+    const VCT_OPTS = { maxDepth: 8, nodeBudget: 200000 };   // VCT 判定的求解预算
     let _mem = null;      // 无 localStorage 时的内存存档
     let _memCustom = null;
 
@@ -99,6 +100,42 @@
         }
     ];
 
+    /* VCT 题库（type: 'vct'）：威胁不限于四，活三也算 —— 求解器是 js/engine/tss.js，
+     * 生成走 tools/gen-vct.js（VCF 必须解不出 + TSS 解出 + 首着是活三 + 走线验证），
+     * 判定与会话共用同一求解器口径，不存标准答案。 */
+    const VCT_RAW = [
+        {
+            id: 'vct-01', level: 1, depth: 2, title: '活三开路',
+            lesson: '活三不强制，但对方应慢一步就转成四 —— 先做三，再收尾。',
+            board: '000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000210100000000000000010000000000000000000000000000000000'
+        },
+        {
+            id: 'vct-02', level: 2, depth: 3, title: '双线轮转',
+            lesson: '两条活三交替施压，对方堵得了一头堵不了两头。',
+            board: '000000000000000000000000000000000000000000000000000000000000000000000000000000000020011000000000020000000000000000100000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
+        },
+        {
+            id: 'vct-03', level: 1, depth: 2, title: '断点回春',
+            lesson: '补断成三也是威胁 —— 别只盯着四。',
+            board: '000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000121200000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000'
+        },
+        {
+            id: 'vct-04', level: 2, depth: 3, title: '先三后四',
+            lesson: '活三逼应，转四的时机是全部。',
+            board: '000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000011000000000001000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
+        },
+        {
+            id: 'vct-05', level: 2, depth: 3, title: '斜直互济',
+            lesson: '横竖斜都是路，三和四要串起来。',
+            board: '000000000000000000000000000000000000000000000000000000002000000000000000000000000000011000000002000000000000000001000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
+        },
+        {
+            id: 'vct-06', level: 2, depth: 3, title: '闷声做杀',
+            lesson: '看似平静的三，藏着两条杀路。',
+            board: '000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000200000000000000000000000000000010010000000000000000000000000001000000000000001000000000000000000000000000000000000000000000000000000'
+        }
+    ];
+
     const PUZZLES = RAW.map(function (p) {
         return {
             id: p.id,
@@ -108,9 +145,22 @@
             title: p.title,
             lesson: p.lesson,
             board: parseBoard(p.board),
-            sideToMove: 1
+            sideToMove: 1,
+            type: 'vcf'
         };
-    }).concat(loadCustoms());
+    }).concat(VCT_RAW.map(function (p) {
+        return {
+            id: p.id,
+            level: p.level,
+            levelName: ['', '入门', '进阶', '高阶'][p.level],
+            depth: p.depth,
+            title: p.title,
+            lesson: p.lesson,
+            board: parseBoard(p.board),
+            sideToMove: 1,
+            type: 'vct'
+        };
+    })).concat(loadCustoms());
 
     /** 读自定义题存档（Node 无 localStorage 时走 _memCustom） */
     function loadCustoms() {
@@ -154,9 +204,18 @@
         return b;
     }
 
+    /** i 点假设落 p 子是否形成活三（VCT 的威胁判定） */
+    function isOpenThreeAt(engine, i, p) {
+        const shapes = new Int8Array(4);
+        GMK.Evaluator.pointShapes(engine, i, p, shapes);
+        for (let d = 0; d < 4; d++) if (shapes[d] === GMK.C.SHAPE.OPEN_THREE) return true;
+        return false;
+    }
+
     class VcfSession {
         constructor(puzzle) {
             this.puzzle = puzzle;
+            this.type = puzzle.type || 'vcf';
             this.engine = new GMK.Board();
             for (let y = 0; y < SIZE; y++) {
                 for (let x = 0; x < SIZE; x++) {
@@ -192,7 +251,8 @@
          *   WIN     成五
          *   DOUBLE  活四/双四，对方挡不住 → 胜
          *   FOUR    冲四成立，对方已自动应手
-         *   NOT_FOUR 不是冲四，攻击链断裂（棋子已撤回）
+         *   THREE   活三施压（仅 VCT 题），对方已自动应手
+         *   NOT_FOUR 不是威胁（VCF:非四 / VCT:非四非活三），攻击链断裂（棋子已撤回）
          *   OCCUPIED / FINISHED
          */
         play(x, y) {
@@ -217,6 +277,22 @@
             if (n === 0) {
                 // 不是冲四：撤掉，棋子不留在盘上，避免污染后续判断
                 this.engine.unplace();
+                // VCT：活三也是合法威胁
+                if (this.type === 'vct' && isOpenThreeAt(this.engine, i, C.BLACK)) {
+                    this.engine.place(i, C.BLACK);
+                    this.steps++;
+                    const dIdx = GMK.TSS.bestDefense(this.engine, C.BLACK);
+                    this.engine.place(dIdx, C.WHITE);
+                    const reply = { x: C.xOf(dIdx), y: C.yOf(dIdx) };
+                    this.lastReply = reply;
+                    this.history.push({ black: { x, y }, white: reply });
+                    if (!this.chainAlive()) {
+                        this.state = 'failed';
+                        this.reason = 'dead';
+                        return { code: 'THREE', reply: reply, dead: true };
+                    }
+                    return { code: 'THREE', reply: reply, dead: false };
+                }
                 return { code: 'NOT_FOUR' };
             }
 
@@ -236,14 +312,21 @@
             this.lastReply = reply;
             this.history.push({ black: { x, y }, white: reply });
 
-            // 对方应手之后，黑方还有没有连冲？没有说明这条线走死了
-            const next = Kill.vcf(this.engine, C.BLACK, 12);
-            if (next < 0) {
+            // 对方应手之后，黑方还有没有连杀？没有说明这条线走死了
+            if (!this.chainAlive()) {
                 this.state = 'failed';
                 this.reason = 'dead';
                 return { code: 'FOUR', reply: reply, dead: true };
             }
             return { code: 'FOUR', reply: reply, dead: false };
+        }
+
+        /** 链条是否还活着：VCF 用 Kill.vcf，VCT 用 TSS.solve（口径与生成一致） */
+        chainAlive() {
+            if (this.type === 'vct') {
+                return GMK.TSS ? GMK.TSS.solve(this.engine, GMK.C.BLACK, VCT_OPTS) !== null : false;
+            }
+            return GMK.Kill.vcf(this.engine, GMK.C.BLACK, 12) >= 0;
         }
 
         /** 撤销一个完整回合（我方冲四 + 对方被迫应手） */
@@ -260,30 +343,49 @@
             return true;
         }
 
-        /** 提示：引擎算出的下一手必胜冲四 */
+        /** 提示：引擎算出的下一手必胜着法（VCF 首选冲四 / VCT 走 TSS） */
         hint() {
+            if (this.type === 'vct' && GMK.TSS) {
+                const r = GMK.TSS.solve(this.engine, GMK.C.BLACK, VCT_OPTS);
+                if (!r) return null;
+                return { x: GMK.C.xOf(r.move), y: GMK.C.yOf(r.move) };
+            }
             const m = GMK.Kill.vcf(this.engine, GMK.C.BLACK, 12);
             if (m < 0) return null;
             return { x: GMK.C.xOf(m), y: GMK.C.yOf(m) };
         }
 
-        /** 参考线：从当前局面顺出的完整连冲序列（含对方应手） */
+        /** 参考线：从当前局面顺出的完整连杀序列（含对方应手） */
         solution() {
             const C = GMK.C, Kill = GMK.Kill;
             const b = cloneEngine(this.engine);
             const line = [];
             const buf = new Int32Array(8);
             for (let d = 0; d < 20; d++) {
-                const m = Kill.vcf(b, C.BLACK, 14);
-                if (m < 0) break;
+                let m;
+                if (this.type === 'vct' && GMK.TSS) {
+                    const r = GMK.TSS.solve(b, C.BLACK, VCT_OPTS);
+                    if (!r) break;
+                    m = r.move;
+                } else {
+                    m = Kill.vcf(b, C.BLACK, 14);
+                    if (m < 0) break;
+                }
                 const mv = { x: C.xOf(m), y: C.yOf(m) };
                 b.place(m, C.BLACK);
                 if (b.isFive(m)) { line.push({ black: mv, white: null }); break; }
                 const n = Kill.fivePoints(b, m, C.BLACK, buf);
-                if (n === 0) break;
                 if (n >= 2) { line.push({ black: mv, white: null }); break; }
-                const r = { x: C.xOf(buf[0]), y: C.yOf(buf[0]) };
-                b.place(buf[0], C.WHITE);
+                let wIdx;
+                if (n === 1) {
+                    wIdx = buf[0];                          // 冲四:对方被迫挡
+                } else if (this.type === 'vct' && GMK.TSS) {
+                    wIdx = GMK.TSS.bestDefense(b, C.BLACK); // 活三:防手自由,取最强应手
+                } else {
+                    break;                                  // VCF:无四即断链
+                }
+                const r = { x: C.xOf(wIdx), y: C.yOf(wIdx) };
+                b.place(wIdx, C.WHITE);
                 line.push({ black: mv, white: r });
             }
             return line;
