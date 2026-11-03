@@ -66,7 +66,8 @@ function flatOf(p) {
     const t0 = Date.now();
     for (let i = 0; i < VCF.PUZZLES.length; i++) {
         const b = boardOfFlat(flatOf(VCF.PUZZLES[i]));
-        const r = TSS.solve(b, C.BLACK, { maxDepth: 6, nodeBudget: 60000 });
+        // v2.8 题库加入 d3/d4 VCT 题，首解可达 ~76k 节点 —— 预算随之放大
+        const r = TSS.solve(b, C.BLACK, { maxDepth: 8, nodeBudget: 300000, timeMs: 3000 });
         if (r && C.inBoard(r.move)) solved++;
         else ok(false, 'VCF 题 ' + VCF.PUZZLES[i].id + ' 应被 VCT 解出');
         // 求解不得污染棋盘
@@ -74,7 +75,8 @@ function flatOf(p) {
             '题 ' + VCF.PUZZLES[i].id + ' 求解后棋盘无残留');
     }
     eq(solved, VCF.PUZZLES.length, 'VCT ⊇ VCF（9 题全解）');
-    ok(Date.now() - t0 < 5000, '9 题求解总耗时应 < 5s', (Date.now() - t0) + 'ms');
+    // v2.8 题库含 d3/d4 VCT 题（预算 300k/3s），总量随题变重 —— 15s 仍是健全性上限
+    ok(Date.now() - t0 < 15000, '15 题求解总耗时应 < 15s', (Date.now() - t0) + 'ms');
 }
 
 /* ---------------- 2. 保守性：不误判 ---------------- */
@@ -91,6 +93,11 @@ function flatOf(p) {
         null, '防守有活三反制时保守放弃');
     // 空盘
     eq(TSS.solve(boardOf([]), 1, {}), null, '空盘不宣称必胜');
+    // 对手有活四在场（随时成五）→ 入口守卫，保守放弃（v2.8.0 加固）
+    eq(TSS.solve(boardOf([[6, 7, 1], [8, 7, 1], [7, 6, 1], [7, 8, 1],
+        [3, 3, 2], [4, 3, 2], [5, 3, 2], [6, 3, 2]]), 1,
+        { maxDepth: 8, nodeBudget: 200000 }),
+        null, '对手有活四时不宣称必胜');
 }
 
 /* ---------------- 3. 正例：VCT 特有（三系）胜 ---------------- */

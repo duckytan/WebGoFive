@@ -26,9 +26,15 @@
             // P2-5：App 自建引擎并包一层可调参 AI（非 HELL 原样委托，
             // HELL + 自定义参数走 getBestMove 透传）。TunableAI 缺席时
             // 核心按默认懒加载 EngineAI，行为与 v2.1 一致。
+            // v2.8.0：再链一层 ThreatAI（TSS 前置求解，命中走 source='vct'，
+            // 未命中/禁手/预算关原样委托）—— this.aiWrapper 保持最外层引用，
+            // setOverride 经透传仍可操作内层 TunableAI。
             if (GMK.TunableAI && typeof GMK.TunableAI.createWrapper === 'function') {
                 this.engineAI = new GMK.EngineAI(this.game);
                 this.aiWrapper = GMK.TunableAI.createWrapper(this.engineAI);
+                if (GMK.ThreatAI && GMK.TSS && typeof GMK.ThreatAI.createWrapper === 'function') {
+                    this.aiWrapper = GMK.ThreatAI.createWrapper(this.aiWrapper, { game: this.game });
+                }
                 this.game.setAI(this.aiWrapper);
             }
             this.renderer = new GMK.Renderer(document.getElementById('board-canvas'));
@@ -748,7 +754,9 @@
             this._vcfTimedArm(p);
             const delBtn = this._$('btn-vcf-del');
             if (delBtn) delBtn.style.display = p.custom ? '' : 'none';
-            this._hint((isDaily ? '📅 每日一题：' : 'VCF 连冲：') + p.title + ' —— ' + p.lesson);
+            const prefix = isDaily ? '📅 每日一题：'
+                : (p.type === 'vct' ? 'VCT 活三连杀：' : 'VCF 连冲：');
+            this._hint(prefix + p.title + ' —— ' + p.lesson);
         }
 
         /* ---------------- 题库下拉 / 摆题 / 限时 ---------------- */

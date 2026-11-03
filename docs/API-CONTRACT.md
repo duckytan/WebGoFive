@@ -13,6 +13,7 @@ GMK = {
   Board,             // board.js —— 一维棋盘 + 棋型统计
   Evaluator,         // evaluator.js —— 静态评估
   Kill,              // kill.js —— VCF 算杀
+  ThreatAI,          // app/threat-ai.js —— TSS 前置 AI 包装层（v2.8.0，见 §8）
   TSS,               // tss.js —— VCT 威胁空间搜索（v2.7.0 新增，见 §7）
   Forbidden,         // forbidden.js —— RIF 禁手
   Search,            // search.js —— PVS + TT
@@ -116,7 +117,9 @@ GMK.Analysis = {
 >   （该 API 不透传其它键），不额外传 `useKill`。
 > - 威胁扫描候选先按 `Ev.pointValue` 预排序再截断（`SCAN_MAX=30`），不按行序截断，
 >   避免中/下半盘成五点被漏检。
-> - 本层只读消费 `EngineAI / Evaluator / C / Kill`，`js/engine/*` 与 `js/core/game.js` 零改动。
+> - 本层只读消费 `EngineAI / Evaluator / C / Kill / TSS`，`js/engine/*` 与 `js/core/game.js` 零改动。
+> - `info.source` 合法值：引擎侧 `win / block / vcf / search / blunder`；
+>   包装层 `vct`（ThreatAI 的 TSS 强制胜，v2.8.0）。
 
 ### 可调参 AI（P2-5 增量，`js/app/tunable-ai.js`）
 
@@ -184,3 +187,24 @@ GMK.TSS = {
   调用方的盘面绝不留幽灵棋子（v1 超时污染教训的同源修法）；
 - 题库由 `tools/gen-vct.js` 生成（VCF 解不出 → TSS 解出 → 首着活三 → 克隆盘走线验证），
   逐题由 `tests/engine/vcf-practice.test.js` 复验。
+
+## 8. ThreatAI（TSS 前置 AI 包装层，v2.8.0）
+
+`js/app/threat-ai.js`。决策链 `ThreatAI(TunableAI(EngineAI))`，未命中/禁手/预算关
+原样委托，未命中时决策与裸引擎完全一致：
+
+```
+GMK.ThreatAI = {
+  createWrapper(inner, { game, budgets })  // → GomokuAI 契约（getMove/getLastInfo/sync）
+                                           // + setOverride 透传 + __locks 测试探针
+  BUDGETS      // 难度 → {nodeBudget, timeMs} 双帽；BEGINNER 为 null（保留新手失误空间）
+  MAX_DEPTH    // TSS 攻击深度 = 6
+}
+```
+
+- **锁线跟随**：命中后走存整条杀线（planned 攻方着法 + 预期防手），对手按预期
+  防守时直接走计划着法（零求解）；偏离/悔棋/新对局由「子数守卫」解锁。
+  子数守卫用盘面真实子数（loadFrom2D 盘的 history 长度虚高，不可作基准）。
+- 黑棋 TSS 点一律过 `GMK.Forbidden.isForbidden`，禁手点回退内层（TSS 不懂 RIF）。
+- A/B 与可靠性审计：`tools/ab-threat.js` + `tools/verify-vct.js`（防守方用独立
+  引擎搜索，防手逃逸 = 误判）。

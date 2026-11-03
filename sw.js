@@ -11,7 +11,7 @@
  */
 'use strict';
 
-const VERSION = '2.7.0';
+const VERSION = '2.8.0';
 const CACHE_NAME = 'gomoku-shell-v' + VERSION;
 
 // 必须与 index.html 实际加载的资源一致：
@@ -41,6 +41,7 @@ const PRECACHE = [
     './js/app/deep-eval.js',
     './js/app/deep-eval-worker.js',
     './js/app/tunable-ai.js',
+    './js/app/threat-ai.js',
     './js/ui/app.js',
     './assets/icon-192.png',
     './assets/icon-512.png',

@@ -23,6 +23,7 @@ require(path.join(ROOT, 'js', 'engine', 'board.js'));
 require(path.join(ROOT, 'js', 'engine', 'evaluator.js'));
 require(path.join(ROOT, 'js', 'engine', 'search.js'));
 require(path.join(ROOT, 'js', 'engine', 'kill.js'));
+require(path.join(ROOT, 'js', 'engine', 'forbidden.js'));
 require(path.join(ROOT, 'js', 'engine', 'gomoku-ai.js'));
 require(path.join(ROOT, 'js', 'engine', 'tss.js'));
 
@@ -57,6 +58,7 @@ function walk(board) {
         const r = TSS.solve(board, C.BLACK, SOLVE_OPTS);
         if (!r || !C.inBoard(r.move)) return null;
         const m = r.move;
+        if (GMK.Forbidden.isForbidden(board, m, C.BLACK)) return null;   // 走线中途不许踩禁手（v2.7.0 教训）
         board.place(m, C.BLACK);
         line.push(m);
         if (board.isFive(m)) return line;
@@ -163,6 +165,10 @@ while (out.length < COUNT && attempts++ < 20000) {
     if (Kill.vcf(board, C.BLACK, 12) >= 0) continue;
     const r = TSS.solve(board, C.BLACK, SOLVE_OPTS);
     if (!r || !firstMoveIsThree(board, r.move)) continue;
+    // 题目必须落在对弈包装层的真实预算内（HARD=40k），否则 AI 实战命中不了
+    if (r.nodes > 40000) continue;
+    // RIF 禁手：黑棋解着若为禁手点，这题对黑不成立（v2.7.0 教训）
+    if (GMK.Forbidden.isForbidden(board, r.move, C.BLACK)) continue;
     // ⚠ 先快照题面再走线：walk 会往盘上落子且不撤销，若先 walk 后快照，
     // 存下来的会是「走完杀线的残局」（v1 版生成器就栽在这上面）
     const flat = toFlat(board);

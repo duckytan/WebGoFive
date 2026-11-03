@@ -116,7 +116,14 @@
     function solve(board, p, opts) {
         opts = opts || {};
         const maxDepth = opts.maxDepth || 6;
-        const state = { nodes: 0, budget: opts.nodeBudget || 60000, depth: 0 };
+        // 双帽：nodeBudget（确定性）+ timeMs（墙钟，跨机器速度一致）。
+        // 时间按 256 个节点查一次表，检查成本可忽略。
+        const state = {
+            nodes: 0,
+            budget: opts.nodeBudget || 60000,
+            deadline: opts.timeMs > 0 ? Date.now() + opts.timeMs : 0,
+            depth: 0
+        };
         const buf = new Int32Array(8);
         const opp = C.opp(p);
         // 预算走「异常跳出递归」，栈上每层的 place 都来不及撤销 ——
@@ -138,7 +145,14 @@
         /** OR 节点：攻方行棋，找一手能证明必胜的威胁 */
         function attack(depth) {
             if (++state.nodes > state.budget) throw { __budget: true };
+            if (state.deadline && (state.nodes & 255) === 0 && Date.now() > state.deadline) {
+                throw { __budget: true };
+            }
             if (depth <= 0) return -1;
+            // 对手有未应对的四威胁（活四/冲四在场）→ 攻方链条随时会被反杀，
+            // 保守放弃（与 kill.vcf 的入口检查同源）。想穿透只能靠「威胁着法
+            // 恰好同时挡五」，那是 kill.vcf 候选枚举的自然覆盖范围。
+            if (Kill.underThreat(board, opp)) return -1;
 
             const moves = threatMoves(board, p, 24);
             for (let k = 0; k < moves.length; k++) {
@@ -188,9 +202,9 @@
                 for (let d = 0; d < defs.length; d++) {
                     const dv = defs[d];
                     board.place(dv, opp);
-                    // 反冲四直接打断攻方链条（保守规则，见模块注释第 4 条）
+                    // 防手直接成五 / 反冲四 → 攻方链条必死（保守规则，见模块注释第 4 条）
                     let sub = -1;
-                    if (!makesOwnFour(board, dv, opp)) {
+                    if (!board.isFive(dv) && !makesOwnFour(board, dv, opp)) {
                         sub = attack(depth - 1);
                     }
                     board.unplace();
