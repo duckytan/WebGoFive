@@ -63,20 +63,31 @@ function flatOf(p) {
 
 {
     let solved = 0;
+    let totalNodes = 0;
     const t0 = Date.now();
     for (let i = 0; i < VCF.PUZZLES.length; i++) {
         const b = boardOfFlat(flatOf(VCF.PUZZLES[i]));
-        // v2.8 题库加入 d3/d4 VCT 题，首解可达 ~76k 节点 —— 预算随之放大
-        const r = TSS.solve(b, C.BLACK, { maxDepth: 8, nodeBudget: 300000, timeMs: 3000 });
-        if (r && C.inBoard(r.move)) solved++;
-        else ok(false, 'VCF 题 ' + VCF.PUZZLES[i].id + ' 应被 VCT 解出');
+        // v2.8 题库加入 d3/d4 VCT 题，最重首解可达 ~145k 节点 —— 预算随之放大。
+        // 刻意不传 timeMs：超集性是正确性断言，只由 nodeBudget 这一个确定性
+        // 上限约束，绝不能受机器并发负载影响（墙钟死线会把重题随机砍成 null）。
+        const r = TSS.solve(b, C.BLACK, { maxDepth: 8, nodeBudget: 300000 });
+        if (r && C.inBoard(r.move)) {
+            solved++;
+            totalNodes += r.nodes;
+        } else {
+            ok(false, 'VCF 题 ' + VCF.PUZZLES[i].id + ' 应被 VCT 解出');
+        }
         // 求解不得污染棋盘
         eq(b.stoneCount(), VCF.PUZZLES[i].board.flat().filter((v) => v).length,
             '题 ' + VCF.PUZZLES[i].id + ' 求解后棋盘无残留');
     }
     eq(solved, VCF.PUZZLES.length, 'VCT ⊇ VCF（9 题全解）');
-    // v2.8 题库含 d3/d4 VCT 题（预算 300k/3s），总量随题变重 —— 15s 仍是健全性上限
-    ok(Date.now() - t0 < 15000, '15 题求解总耗时应 < 15s', (Date.now() - t0) + 'ms');
+    // 用「总节点数」替换墙钟耗时作为确定性健全性上限：节点数与计算量成正比，
+    // 且同局面同参数恒定，不受机器负载影响。实测 15 题合计约 53 万节点，
+    // 150 万阈值留约 2.8 倍余量，同时远低于 15×300k 的理论上限。
+    ok(totalNodes < 1500000, '15 题求解总节点数应有界（< 150 万）', totalNodes + ' 节点');
+    // 耗时仅作信息打印，不作断言（墙钟时间随机器负载漂移，会引入 flaky）
+    console.log('  [info] 超集性求解：' + totalNodes + ' 节点 / ' + (Date.now() - t0) + 'ms');
 }
 
 /* ---------------- 2. 保守性：不误判 ---------------- */
@@ -127,6 +138,20 @@ function flatOf(p) {
     const r = TSS.solve(b, 1, { maxDepth: 10, nodeBudget: 300 });
     eq(r, null, '极小预算返回 null（不宣称）');
     eq(b.stoneCount(), base, '预算耗尽后棋盘无残留');
+}
+
+/* ---------------- 4b. timeMs 墙钟死线：超时返回 null 且不留幽灵棋子 ---------------- */
+
+{
+    // 选最重的 vcf-09：不带 timeMs 时需 ~145k 节点才解出，且 < 300k nodeBudget，
+    // 因此只有「时间先到」才会砍断，绝不会是节点预算先到，也不会在 1ms 内被解出。
+    // 死线检查在每 256 个节点处触发，局面足够重 → 必然命中（实测稳定返回 null）。
+    const heavy = VCF.PUZZLES.find((p) => p.id === 'vcf-09');
+    const b = boardOfFlat(flatOf(heavy));
+    const base = b.stoneCount();
+    const r = TSS.solve(b, C.BLACK, { maxDepth: 8, nodeBudget: 300000, timeMs: 1 });
+    eq(r, null, 'timeMs:1 墙钟死线触发时返回 null（不宣称）');
+    eq(b.stoneCount(), base, '墙钟死线触发后棋盘无残留（finally 回滚生效）');
 }
 
 /* ---------------- 5. 确定性 ---------------- */

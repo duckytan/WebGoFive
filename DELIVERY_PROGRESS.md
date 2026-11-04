@@ -1,14 +1,27 @@
 # WebGoFive-H5-v2 交付进度
 
 > 独立新项目，不复用 WebGoFive-H5-Qoder 旧代码。引擎复用 v1.4.0（171 测试背书），UI/核心/渲染器全部重写。
-> 最后更新：2026-11-04 —— **v2.8.0（ThreatAI：TSS 反哺对弈 + 可靠性审计基建）开发完成，验收全绿，待用户确认发布**。
+> 最后更新：2026-11-04 —— **v2.8.1（发布前加固：Worker 路径 + 闸门去 flaky + 版本收口）验收全绿，待用户确认发布**。
 
 ## 结论：✅ 开发完成，验收 PASS
 
-- 单元测试 **492/492**（12 套件：…… + tss 37 + threat-ai 32）
+- 单元测试 **494/494**（12 套件）
 - E2E（真实 Edge）**231/231，15 套件**
-- 资源完整性（含 sw.js PRECACHE 清单）+ 版本一致性（2.7.0 四处源）通过
+- 资源完整性（含 sw.js PRECACHE 清单）+ 版本一致性（2.8.1 四处源）通过
 - 总判定 **PASS**，`reports/acceptance.json`，变更明细见 `CHANGELOG.md`
+
+## v2.8.1（11-04）：发布前加固
+
+1. **Worker 路径改为部署路径无关**：`deep-eval.js` 用
+   `document.currentScript.src` + `new URL()` 推导入口；`deep-eval-worker.js` 的
+   `importScripts` 改 `../engine/*.js` 与同目录 `analysis.js`（相对基准是 Worker 自身）。
+   修掉子路径部署下 9 处 `/js/...` 全 404 → 深度评估静默降级、整页冻住的隐患。
+   `sw.js` PRECACHE 相对 sw.js 自身解析，保持不变。
+2. **闸门去 flaky**：`tss.test.js` 超集性断言移除 `timeMs:3000` 墙钟死线，
+   只留确定性 `nodeBudget:300000`；`15s 耗时断言` 换 `totalNodes < 1500000`；
+   另补 `timeMs:1` 死线专项用例。连跑 3 次稳定 39 项全绿，节点数恒 534715。
+3. 版本四处源 2.8.0 → **2.8.1**；README / CHANGELOG / 进度文档数字同步到实跑值。
+4. 全套验收：单元 **494** + E2E **231**（15 套件），PASS 问题 0；引擎零 diff。
 
 ## v2.8.0（11-04）：ThreatAI —— TSS 反哺对弈 + 可靠性审计基建
 

@@ -21,7 +21,17 @@
     const root = typeof globalThis !== 'undefined' ? globalThis : this;
     const GMK = root.GMK || (root.GMK = {});
 
-    const WORKER_URL = '/js/app/deep-eval-worker.js';
+    // new Worker() 的相对 URL 基准是「文档 URL」（index.html），不是本脚本自身，
+    // 站点部署在子路径时会指错。用 currentScript.src 推导出绝对 URL：不受文档
+    // 所在目录、<base> 标签、查询串影响；IIFE 顶层同步执行期间 currentScript 有效。
+    // 老环境 / 非浏览器（如 file:// 无 currentScript）退回相对路径兜底。
+    const WORKER_URL = (function () {
+        try {
+            const cs = document.currentScript;
+            if (cs && cs.src) return new URL('deep-eval-worker.js', cs.src).href;
+        } catch (e) { /* 走下面的兜底 */ }
+        return 'js/app/deep-eval-worker.js';
+    })();
 
     let worker = null;        // 惰性创建，复用
     let workerBroken = false; // 一旦证实不可用，本页面生命周期内不再尝试

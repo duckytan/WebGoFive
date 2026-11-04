@@ -4,6 +4,38 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.8.1] - 2026-11-04
+
+发布前加固（纯路径修复 + 闸门去 flaky + 版本收口，引擎零 diff）。
+
+### 🔧 Worker 路径改为部署路径无关（P1）
+
+此前 9 处 `/js/...` 根绝对路径只适用于部署在域名根：站点一旦放到子路径，
+`new Worker()` 与 `importScripts` 全部 404，深度评估会**静默降级**成主线程同步，
+HELL 参数下整页冻住且测试不易察觉。
+
+- `js/app/deep-eval.js`：Worker URL 不再写死 `/js/app/...`。`new Worker()` 的相对
+  URL 基准是文档（index.html）而非脚本自身，故用 `document.currentScript.src`
+  配合 `new URL('deep-eval-worker.js', cs.src)` 推导绝对 URL —— 不受文档目录、
+  `<base>`、查询串影响；IIFE 顶层同步执行期间 currentScript 有效，另有相对路径兜底。
+- `js/app/deep-eval-worker.js`：`importScripts` 的相对 URL 基准是 Worker 脚本自身，
+  故引擎文件改用 `../engine/*.js`、同目录 `analysis.js` 直接写文件名。
+
+`sw.js` 的 PRECACHE 清单路径本身相对 sw.js（仓库根）解析，无需改动。
+
+### ✅ 验收闸门去 flaky
+
+`tests/engine/tss.test.js` 超集性断言原先带 `timeMs:3000` 墙钟死线：机器空闲时能
+跑出 PASS（此前 `reports/acceptance.json` 即如此），但并发负载下重题会被随机砍成
+`null`，闸门随机红。现去掉墙钟死线，改用确定性的 `nodeBudget:300000` 与
+`totalNodes < 1500000` 节点约束，并补一条 `timeMs` 死线专项用例单独覆盖超时行为。
+
+### 🔖 版本
+
+四处源 2.8.0 → **2.8.1**（package.json / manifest.webmanifest / index.html 徽标 /
+sw.js VERSION），验收闸门四处一致性通过。全套验收：单元 **494** + E2E **231**
+（15 套件），PASS 问题 0；README 与 DELIVERY_PROGRESS 的测试数字同步到实跑值。
+
 ## [2.8.0] - 2026-11-04
 
 ### ⚔️ ThreatAI：TSS 前置求解的 AI 包装层（v2.7 的 TSS 反哺对弈）

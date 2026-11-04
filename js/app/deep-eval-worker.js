@@ -8,21 +8,23 @@
  * 在 Worker 全局作用域里 importScripts 之后行为与主线程完全一致 ——
  * 评估逻辑零拷贝，主线程与 Worker 共用同一份 Analysis.evaluate。
  *
- * 注意：importScripts 用根相对路径（Worker 的相对路径基准是它自己的 URL）；
- * 本文件不进 index.html 的 script 标签（loadorder 测试因此不会碰它），
- * 由 js/app/deep-eval.js 通过 new Worker() 加载，sw.js PRECACHE 负责离线可用。
+ * 注意：importScripts 的相对路径以 Worker 自身 URL 为基准，故引擎文件用
+ * ../engine/、同目录的 analysis.js 直接写文件名 —— 与部署路径无关，站点放在
+ * 域名根或任意子路径都能正确加载。本文件不进 index.html 的 script 标签
+ * （loadorder 测试因此不会碰它），由 js/app/deep-eval.js 通过 new Worker() 加载，
+ * sw.js PRECACHE 负责离线可用。
  */
 'use strict';
 
 importScripts(
-    '/js/engine/constants.js',
-    '/js/engine/board.js',
-    '/js/engine/evaluator.js',
-    '/js/engine/search.js',
-    '/js/engine/kill.js',
-    '/js/engine/forbidden.js',
-    '/js/engine/gomoku-ai.js',
-    '/js/app/analysis.js'
+    '../engine/constants.js',
+    '../engine/board.js',
+    '../engine/evaluator.js',
+    '../engine/search.js',
+    '../engine/kill.js',
+    '../engine/forbidden.js',
+    '../engine/gomoku-ai.js',
+    'analysis.js'
 );
 
 self.onmessage = function (e) {

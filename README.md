@@ -49,8 +49,8 @@ npm start          # 本地预览 http://127.0.0.1:8080（零依赖静态服务�
 ## 测试与验收
 
 ```bash
-npm test           # 单元 316 项（engine / forbidden / vcf / vcf-practice / search / loadorder / tunable / replay）
-npm run test:e2e   # E2E 12 套件 179 项（真实 Edge，puppeteer-core 驱动）
+npm test           # 单元 494 项（engine / forbidden / vcf / vcf-practice / search / loadorder / tunable / replay / daily-wrongbook / custom-timed / tss / threat-ai）
+npm run test:e2e   # E2E 15 套件 231 项（真实 Edge，puppeteer-core 驱动）
 npm run accept     # 一键验收闸门：单元 + E2E + 资源完整性 + 版本一致性
 npm run bench      # 性能基准
 npm run selfplay   # 棋力自对弈（勿与 CPU 密集任务并行）
@@ -68,13 +68,15 @@ UI 层  js/ui/app.js          启动、模式切换、面板接线、快捷键�
          ↓ 只读消费
 App 层  js/app/analysis.js   AI 分析 / 威胁扫描 / 优势条 / 开局推荐（GMK.Analysis）
         js/app/tunable-ai.js HELL 高级棋力参数清洗与透传（GMK.TunableAI）
-        js/app/vcf.js        VCF 练习题库与流程
+        js/app/threat-ai.js  TSS 前置求解包装层（命中走锁线 / 否则委托内层）
+        js/app/deep-eval.js  深度评估 Worker 调度（GMK.DeepEval）
+        js/app/vcf.js        VCF / VCT 题库 · 自定义题 · 限时 · 每日一题 · 错题本
         js/app/save-load.js  localStorage 自动存档
         js/app/replay.js     回放器
          ↓ 只读消费
 核心    js/core/game.js      GomokuGame：状态机 / 规则 / 事件 / AI 注入
 渲染器  js/renderer/board.js BoardRenderer：DPR / 主题 / 点击换算 / 威胁高亮
-引擎    js/engine/*          PVS 搜索 + VCF 算杀 + 禁手（GMK.EngineAI 等）
+引擎    js/engine/*          PVS 搜索 + VCF 算杀 + TSS 威胁空间搜索 + 禁手
 ```
 
 - 换 UI 不碰引擎 / 核心；换 AI 不碰页面 / 核心 —— 契约见 `docs/API-CONTRACT.md`。
@@ -89,11 +91,12 @@ index.html              语义化骨架 + 内联面板样式 + 脚本加载顺�
 manifest.webmanifest    PWA 元数据
 sw.js                   Service Worker（离线缓存）
 css/                    style / themes / animations（390px 响应式）
-js/                     engine 7 文件 · core · renderer · app · ui
+js/                     engine（含 tss.js）· core · renderer · app · ui
 assets/                 icon-192 / 512 / maskable-512（纯 Node 生成）
-tests/                  engine 单测 · e2e（harness + 12 套件）· accept.js
+tests/                  engine 单测 12 套 · e2e（harness + 15 套件）· accept.js
 tools/                  serve.js 静态服务 · gen-icons.js 图标生成
-                        gen-vcf.js 题库生成 · shot.js 界面截图
+                        gen-vcf.js / gen-vct.js 题库生成 · shot.js 界面截图
+                        ab-threat.js / verify-vct.js VCT 可靠性审计
 docs/                   API-CONTRACT.md · PRD-AI-ENHANCE.md
                         AI-ENHANCE-DESIGN.md · VCF-REDESIGN.md
 reports/                验收报告（acceptance.json / e2e.json）+ 界面截图
