@@ -49,9 +49,9 @@ npm start          # 本地预览 http://127.0.0.1:8080（零依赖静态服务�
 ## 测试与验收
 
 ```bash
-npm test           # 单元 494 项（engine / forbidden / vcf / vcf-practice / search / loadorder / tunable / replay / daily-wrongbook / custom-timed / tss / threat-ai）
+npm test           # 单元 358 项（8 套：engine / forbidden / vcf / vcf-practice / search / loadorder / tunable / replay）
 npm run test:e2e   # E2E 15 套件 231 项（真实 Edge，puppeteer-core 驱动）
-npm run accept     # 一键验收闸门：单元 + E2E + 资源完整性 + 版本一致性
+npm run accept     # 唯一交付判据：单元 494 项（12 套）+ E2E 231 项 + 资源完整性 + 版本一致性
 npm run bench      # 性能基准
 npm run selfplay   # 棋力自对弈（勿与 CPU 密集任务并行）
 ```
