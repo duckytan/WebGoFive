@@ -40,6 +40,10 @@ const MIME = {
     '.png': 'image/png', '.md': 'text/plain'
 };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+/** 首次最终验收基线（31075fb），用于后续提交的「运行时代码是否被改动」回归复核 */
+const BASELINE = '31075fbcefa1b0c604a82cc1abdabfe830b3f192';
+/** 期望 HEAD 由 team-lead / release-sync 通报注入，避免把某一时点 SHA 硬编码成判据 */
+const EXPECT_HEAD = process.env.QA_EXPECT_HEAD || '';
 
 /* ---------------- 独立静态服务（支持前缀 / 404 注入 / 请求日志） ---------------- */
 function startServer(prefix) {
@@ -308,11 +312,24 @@ function versionChecks(report) {
     const swVer = (sw.match(/const VERSION = '([^']+)'/) || [])[1];
     const htmlVer = (html.match(/id="app-version"[^>]*>v([0-9.]+)</) || [])[1];
     const changelogHas = /## \[2\.8\.1\]/.test(changelog);
-    const readmeUnit = (readme.match(/npm test\s+#\s*单元\s*(\d+)\s*项/) || [])[1];
+    // README 自 7834fd1（O-1 修复）起采用双口径，脚本需兼容新旧两种写法，否则复跑会假阴性：
+    //   旧(31075fb): npm test # 单元 494 项（12 套名单）
+    //   新(7834fd1): npm test # 单元 358 项（8 套） / npm run accept # 单元 494 项（12 套）
+    // 与 acceptance.json 对齐的应是「唯一交付判据」那条（494），不是 npm test 那条（358）。
+    const readmeNpmTestUnit = (readme.match(/npm test\s+#\s*单元\s*(\d+)\s*项/) || [])[1];
+    const readmeAcceptUnit = (readme.match(/npm run accept\s+#[^\n]*单元\s*(\d+)\s*项/) || [])[1]
+        || readmeNpmTestUnit;   // 兼容旧版单口径 README
     const readmeE2E = (readme.match(/E2E\s*(\d+)\s*套件\s*(\d+)\s*项/) || []);
     const heads = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT }).toString().trim();
     const status = execFileSync('git', ['status', '--short'], { cwd: ROOT }).toString().trim();
     const engineDiff = execFileSync('git', ['diff', '--stat', 'HEAD', '--', 'js/engine/', 'js/core/game.js'], { cwd: ROOT }).toString().trim();
+    // 自首次验收基线以来，运行时代码是否被改动（后续提交回归复核的关键判据）
+    let runtimeDiff = '(基线不可用)';
+    try {
+        runtimeDiff = execFileSync('git', ['diff', '--stat', BASELINE, 'HEAD', '--',
+            'js/', 'index.html', 'sw.js', 'manifest.webmanifest', 'package.json', 'CHANGELOG.md'],
+            { cwd: ROOT }).toString().trim() || '(空 = 运行时零改动)';
+    } catch (e) { runtimeDiff = 'ERROR: ' + e.message; }
 
     // 生产目录里是否还有 "/js/..." 根绝对路径（本次修复要消除的对象）
     const rootAbs = [];
@@ -327,19 +344,28 @@ function versionChecks(report) {
 
     report.version = {
         head: heads,
-        gitStatus: status || '(空 = 干净；唯一允许项是 QA 脚本 tests/qa/final-2.8.1-audit.js)',
+        expectedHead: EXPECT_HEAD || '(未提供，跳过交叉断言)',
+        baseline: BASELINE,
+        gitStatus: status || '(空 = 工作区干净)',
         package: pkg.version,
         manifest: man.version,
         sw: swVer,
         indexBadge: htmlVer,
         changelogHas281: changelogHas,
         acceptance: { verdict: acc.verdict, unitAssertions: acc.unitAssertions, e2e: acc.e2e, problems: acc.problems },
-        readme: { unit: readmeUnit, e2eSuites: readmeE2E[1], e2eItems: readmeE2E[2], raw52: readme.split('\n')[51], raw53: readme.split('\n')[52] },
+        readme: {
+            npmTestUnit: readmeNpmTestUnit, acceptUnit: readmeAcceptUnit,
+            e2eSuites: readmeE2E[1], e2eItems: readmeE2E[2],
+            raw52: readme.split('\n')[51], raw53: readme.split('\n')[52], raw54: readme.split('\n')[53]
+        },
         engineDiff: engineDiff || '(空 = 零 diff)',
+        runtimeDiffSinceBaseline: runtimeDiff,
         rootAbsoluteJsRefs: rootAbs,
         htmlRootAbsoluteJsRefs: htmlRootAbs,
         allFourAre281: pkg.version === '2.8.1' && man.version === '2.8.1' && swVer === '2.8.1' && htmlVer === '2.8.1',
-        numbersConsistent: String(acc.unitAssertions) === readmeUnit && String(acc.e2e.suites) === readmeE2E[1] && String(acc.e2e.total) === readmeE2E[2]
+        numbersConsistent: String(acc.unitAssertions) === readmeAcceptUnit
+            && String(acc.e2e.suites) === readmeE2E[1]
+            && String(acc.e2e.total) === readmeE2E[2]
     };
 }
 
@@ -353,7 +379,10 @@ function versionChecks(report) {
             cacheControl: 'no-store, must-revalidate',
             pageCDP: 'Network.enable + setCacheDisabled(true) + setBypassServiceWorker(true)',
             cdpAutoAttach: 'skipped-by-design（见脚本头 §5）',
-            note: '产品源码 / 已有测试 / 配置均零改动；唯一新增文件是本 QA 辅助脚本与 .log'
+            note: '产品源码 / 已有测试 / 配置均零改动；QA 产物仅位于 tests/qa/ 下',
+            baseline: BASELINE,
+            expectedHead: EXPECT_HEAD || '(未提供)',
+            recheck: '兼容 README 单/双口径；HEAD 期望值由 QA_EXPECT_HEAD 注入；新增「运行时代码自基线零改动」判据，可在后续提交上幂等复跑'
         },
         scenarios: {}, checks: {}, version: null
     };
@@ -409,7 +438,9 @@ function versionChecks(report) {
         '4d 引擎零 diff': !!(report.version && report.version.engineDiff === '(空 = 零 diff)'),
         '4e 生产 js 无 /js/ 根绝对路径': !!(report.version && report.version.rootAbsoluteJsRefs.length === 0 && report.version.htmlRootAbsoluteJsRefs === 0),
         '4f acceptance PASS 且问题 0': !!(report.version && report.version.acceptance.verdict === 'PASS' && report.version.acceptance.problems.length === 0),
-        '4g HEAD === 31075fb': !!(report.version && report.version.head === '31075fbcefa1b0c604a82cc1abdabfe830b3f192')
+        '4g HEAD 有效且与通报 SHA 一致': !!(report.version && /^[0-9a-f]{40}$/.test(report.version.head)
+            && (!EXPECT_HEAD || report.version.head === EXPECT_HEAD)),
+        '4h 运行时代码自 31075fb 基线零改动': !!(report.version && report.version.runtimeDiffSinceBaseline === '(空 = 运行时零改动)')
     };
     report.checks = c;
     report.failedChecks = Object.keys(c).filter(k => !c[k]);
