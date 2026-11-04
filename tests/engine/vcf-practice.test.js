@@ -20,6 +20,7 @@ require(path.join(ENGINE, 'constants.js'));
 const Board = require(path.join(ENGINE, 'board.js'));
 require(path.join(ENGINE, 'evaluator.js'));
 require(path.join(ENGINE, 'search.js'));
+require(path.join(ENGINE, 'forbidden.js'));
 const Kill = require(path.join(ENGINE, 'kill.js'));
 const VCF = require(path.join(ROOT, 'js', 'app', 'vcf.js'));
 require(path.join(ENGINE, 'tss.js'));
@@ -89,6 +90,13 @@ for (let k = 0; k < VCF.PUZZLES.length; k++) {
             ok(three, tag + ' 首着是活三（VCT 本体）');
         }
         eq(VCF.solutionOf(k).length, pz.depth, tag + ' 参考线深度与标注一致');
+        // v2.9.0：提示点必须非禁手（v2.7.0 曾有 2 道题提示点是黑棋三三禁手）
+        const hint = VCF.create(k).hint();
+        if (hint) {
+            const forbidden = globalThis.GMK.Forbidden.isForbidden(
+                toEngine(pz.board), C.idx(hint.x, hint.y), BLACK);
+            eq(forbidden, false, tag + ' 提示点非黑棋禁手');
+        }
         // 照提示走线必须通关
         const sess = VCF.create(k);
         let guard = 0;

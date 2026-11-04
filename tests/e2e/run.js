@@ -11,7 +11,9 @@ const SUITES = [
     '01-load', '02-rules', '03-ai', '04-modes',
     '05-settings', '06-persistence', '07-mobile', '08-pwa',
     '09-ai-panel', '10-strength-opening', '11-ux', '12-layout',
-    '13-daily-wrongbook', '14-custom-timed', '15-vct'
+    '13-daily-wrongbook', '14-custom-timed', '15-vct',
+    // 16 会关掉 harness 服务器，必须排最后
+    '16-offline-worker'
 ];
 
 (async () => {

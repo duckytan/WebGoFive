@@ -675,7 +675,9 @@
                 : new Promise((resolve) => resolve(
                     GMK.Analysis.evaluate(g.getBoardState(), g.currentPlayer, opts)));
             runner.then((res) => {
-                this._lastDeepEval = res;   // 留给 E2E 断言 worker/sync 路径
+                this._evalSeq = (this._evalSeq || 0) + 1;
+                res._seq = this._evalSeq;
+                this._lastDeepEval = res;   // 留给 E2E 断言 worker/sync 路径与轮次
                 this._paintDeepEval(res);
             }).catch((e) => {
                 this._hint('深度评估失败：' + (e && e.message || e));

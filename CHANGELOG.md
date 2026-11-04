@@ -4,6 +4,37 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.9.0] - 2026-11-04
+
+### 🔐 关闭 QA 观察项 O-3：离线深度评估实测（E2E 16-offline-worker）
+
+QA 复检报告的唯一未关闭观察项「SW 已激活且缓存命中时 Worker 路径未实测」，
+本版以**真断网**方式定案：
+
+- harness 新增 `stopServer()`：真停静态服务器 + 掐断全部 keep-alive。比 CDP
+  页面级离线仿真更硬 —— SW 的 fetch 不经过页面网络栈，页面 offline 对
+  SW 内部 fetch 无效，只有真断服务器才能逼出缓存路径。
+- 新增 E2E `16-offline-worker`（6 项）：SW 激活 → 在线基线 via='worker' →
+  服务器下线 → 再评估 **via 仍为 'worker'**（Worker 脚本与全部 importScripts
+  由 SW 缓存喂给），离线结果正常上屏。O-3 关闭，无代码改动即通过。
+
+### 🐛 ThreatAI 锁线守卫的计数基准缺陷（v2.8.0 遗留）
+
+- 锁线的「子数守卫」原来用 `Board.stoneCount()`（= history 长度）—— 但
+  `loadFrom2D` 构建的盘 history 虚高（5 子记 10），守卫会误判陈旧/新鲜，
+  锁线在 EvE 下不可靠。改用**盘面真实子数**（2D 直接统计）。
+- 连带单测加固：锁线跟随零求解 / 对手偏离解锁 / 陈旧失效，三态全覆盖。
+
+### 🐛 VCT 题禁手缺陷补全（v2.7.0 遗留）
+
+- vcf-practice 逐题复验新增断言：**提示点必须非黑棋禁手**（v2.7.0 的
+  2 道问题题已在 v2.8.0 重造，本版把这道防线钉进测试，116 项）。
+
+### 🔧 其他
+
+- app.js 深度评估增加 `_evalSeq` 轮次计数（E2E 区分多次评估的结果）。
+- 版本 2.8.1 → **2.9.0** 四处源同步。
+
 ## [2.8.1] - 2026-11-04
 
 发布前加固（纯路径修复 + 闸门去 flaky + 版本收口，引擎零 diff）。

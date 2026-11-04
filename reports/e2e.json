@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-11-04T13:16:49.864Z",
+  "generatedAt": "2026-11-04T15:41:58.340Z",
   "browser": "(local Edge)",
-  "pass": 231,
+  "pass": 237,
   "fail": 0,
-  "total": 231,
+  "total": 237,
   "results": [
     {
       "suite": "01-load",
@@ -92,6 +92,12 @@
     {
       "suite": "15-vct",
       "pass": 10,
+      "fail": 0,
+      "failures": []
+    },
+    {
+      "suite": "16-offline-worker",
+      "pass": 6,
       "fail": 0,
       "failures": []
     }

@@ -1,7 +1,7 @@
 # WebGoFive-H5-v2 交付进度
 
 > 独立新项目，不复用 WebGoFive-H5-Qoder 旧代码。引擎复用 v1.4.0（171 测试背书），UI/核心/渲染器全部重写。
-> 最后更新：2026-11-04 —— **v2.8.1（发布前加固：Worker 路径 + 闸门去 flaky + 版本收口）验收全绿，待用户确认发布**。
+> 最后更新：2026-11-04 —— **v2.9.0（O-3 关闭：离线 Worker 实测 + ThreatAI 守卫修复 + VCT 题禁手断言）验收全绿，待用户确认发布**。
 
 ## 结论：✅ 开发完成，验收 PASS
 
@@ -9,6 +9,18 @@
 - E2E（真实 Edge）**231/231，15 套件**
 - 资源完整性（含 sw.js PRECACHE 清单）+ 版本一致性（2.8.1 四处源）通过
 - 总判定 **PASS**，`reports/acceptance.json`，变更明细见 `CHANGELOG.md`
+
+## v2.9.0（11-04）：O-3 关闭 + ThreatAI 守卫修复
+
+1. **O-3 关闭**：`16-offline-worker`（E2E）以真断网（harness `stopServer()`，
+   比 CDP 页面级离线更硬 —— SW fetch 不经页面网络栈）实测：断网下深度评估
+   via 仍为 'worker'，SW 缓存完整喂饱 Worker 脚本与 importScripts。
+   QA 复检报告的唯一未关闭观察项就此定案（无代码改动即通过，属架构红利）。
+2. **ThreatAI 子数守卫修复**：锁线陈旧判定原来用 history 长度（loadFrom2D
+   虚高 2×），EvE 下锁线不可靠 → 改盘面真实子数。三态单测（跟随/偏离/陈旧）。
+3. **VCT 题禁手断言**：vcf-practice 逐题复验补「提示点非黑棋禁手」（116 项）。
+4. harness `stopServer` / app.js `_evalSeq` 两个测试基建小件。
+5. 版本 2.8.1 → 2.9.0 四处源同步。
 
 ## v2.8.1（11-04）：发布前加固
 

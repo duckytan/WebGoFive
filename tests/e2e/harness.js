@@ -69,6 +69,18 @@ async function shutdown() {
     if (server) { try { server.close(); } catch (e) {} server = null; }
 }
 
+/**
+ * 模拟「服务器下线」（真实断网）：停止接受连接并掐断所有 keep-alive。
+ * 比 CDP 的离线仿真更真实 —— Service Worker 的 fetch 不经过页面的网络栈，
+ * 页面级 offline 对 SW 内的 fetch 无效，只有真断服务器才能逼出缓存路径。
+ * 只能在最后一个套件里用（之后本进程内服务器不可恢复）。
+ */
+function stopServer() {
+    if (!server) return;
+    try { if (server.closeAllConnections) server.closeAllConnections(); } catch (e) {}
+    try { server.close(); } catch (e) {}
+}
+
 /** 开一个新标签页，等 demo/game/renderer 就绪 */
 async function openPage() {
     const page = await browser.newPage();
@@ -159,4 +171,4 @@ async function runSuite(name, fn, pageOpts) {
     return t;
 }
 
-module.exports = { boot, shutdown, openPage, clickCell, setPosition, stoneAt, makeAsserter, runSuite, ROOT, EDGE, getBaseUrl: () => BASE_URL };
+module.exports = { boot, shutdown, stopServer, openPage, clickCell, setPosition, stoneAt, makeAsserter, runSuite, ROOT, EDGE, getBaseUrl: () => BASE_URL };

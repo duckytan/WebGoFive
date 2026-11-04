@@ -59,7 +59,6 @@
         // 动机：证明必胜后的「再求解」可能因时间死线掉链子（audit 实证）。
         // 对手按预期防守 → 直接走计划着法（零搜索）；偏离/陈旧 → 解锁重解。
         const locks = { 1: null, 2: null };
-
         /** 命中后走存杀线：每步 solve（双倍预算，只此一次）→ 记录预期防手 */
         function buildPlan(b, p, budget) {
             const plan = [];
@@ -138,7 +137,7 @@
                             lock.idx++;
                             return { x: C.xOf(step.move), y: C.yOf(step.move) };
                         }
-                        locks[p] = null;   // 对手偏离 / 陈旧 / 着法失效 → 解锁
+                        locks[p] = null;   // 对手偏离 / 着法失效 → 解锁（偏离追击已在 v2.9 评估后移除，见 DELIVERY_PROGRESS）
                     }
 
                     const r = TSS.solve(b, p, {

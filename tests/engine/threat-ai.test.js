@@ -70,7 +70,11 @@ function doubleThreeGame(currentPlayer) {
 
 {
     const inner = fakeInner();
-    const w = ThreatAI.createWrapper(inner, { game: doubleThreeGame(1) });
+    // 双活三首解 ~17k 节点 / ~630ms,贴着 HARD 400ms 死线会间歇超时 —— 显式放宽
+    const w = ThreatAI.createWrapper(inner, {
+        game: doubleThreeGame(1),
+        budgets: { HARD: { nodeBudget: 300000, timeMs: 3000 } }
+    });
     const mv = w.getMove('HARD');
     ok(mv && typeof mv.x === 'number' && mv.x >= 0, '命中时返回合法点', JSON.stringify(mv));
     const info = w.getLastInfo();
@@ -154,7 +158,10 @@ function doubleThreeGame(currentPlayer) {
 
 {
     const inner = fakeInner();
-    const w = ThreatAI.createWrapper(inner, { game: doubleThreeGame(2) });
+    const w = ThreatAI.createWrapper(inner, {
+        game: doubleThreeGame(2),
+        budgets: { HELL: { nodeBudget: 300000, timeMs: 3000 } }
+    });
     const mv = w.getMove('HELL');
     ok(mv && typeof mv.x === 'number', '白棋视角命中', JSON.stringify(mv));
     eq(w.getLastInfo().player, 2, 'info.player = 白');

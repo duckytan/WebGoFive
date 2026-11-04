@@ -1,6 +1,6 @@
 {
   "name": "webgofive-h5-v2",
-  "version": "2.8.1",
+  "version": "2.9.0",
   "description": "WebGoFive H5 五子棋 —— 自研 AI 引擎 + 模块化架构 + PWA（v2 重构版）",
   "main": "index.html",
   "scripts": {
