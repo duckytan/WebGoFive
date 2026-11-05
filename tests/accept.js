@@ -36,7 +36,7 @@ for (const s of unitSets) {
 }
 console.log('  单元断言合计 ' + unitAssertions + ' 项');
 
-// 2. E2E（15 套件，真实 Edge）
+// 2. E2E（16 套件，真实 Edge）
 console.log('— E2E（真实 Edge 浏览器）—');
 // run.js 失败时退出码非 0，execSync 会抛异常 —— 必须兜住，
 // 否则 E2E 失败时整个闸门崩溃、连「判定：FAIL」都打不出来

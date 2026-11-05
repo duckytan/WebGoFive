@@ -49,9 +49,9 @@ npm start          # 本地预览 http://127.0.0.1:8080（零依赖静态服务�
 ## 测试与验收
 
 ```bash
-npm test           # 单元 358 项（8 套：engine / forbidden / vcf / vcf-practice / search / loadorder / tunable / replay）
-npm run test:e2e   # E2E 15 套件 231 项（真实 Edge，puppeteer-core 驱动）
-npm run accept     # 唯一交付判据：单元 494 项（12 套）+ E2E 231 项 + 资源完整性 + 版本一致性
+npm test           # 单元 364 项（8 套：engine / forbidden / vcf / vcf-practice / search / loadorder / tunable / replay）
+npm run test:e2e   # E2E 16 套件 237 项（真实 Edge，puppeteer-core 驱动）
+npm run accept     # 唯一交付判据：单元 500 项（12 套）+ E2E 237 项（16 套件）+ 资源完整性 + 版本一致性
 npm run bench      # 性能基准
 npm run selfplay   # 棋力自对弈（勿与 CPU 密集任务并行）
 ```
@@ -93,7 +93,7 @@ sw.js                   Service Worker（离线缓存）
 css/                    style / themes / animations（390px 响应式）
 js/                     engine（含 tss.js）· core · renderer · app · ui
 assets/                 icon-192 / 512 / maskable-512（纯 Node 生成）
-tests/                  engine 单测 12 套 · e2e（harness + 15 套件）· accept.js
+tests/                  engine 单测 12 套 · e2e（harness + 16 套件）· accept.js
 tools/                  serve.js 静态服务 · gen-icons.js 图标生成
                         gen-vcf.js / gen-vct.js 题库生成 · shot.js 界面截图
                         ab-threat.js / verify-vct.js VCT 可靠性审计
